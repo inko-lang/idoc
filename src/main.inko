@@ -1,0 +1,3 @@
+class async Main {
+  fn async main {}
+}
