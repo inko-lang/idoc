@@ -1,0 +1,203 @@
+# An intermediate representation of Inko's documentation files.
+import std.fs.file (ReadOnlyFile)
+import std.fs.path (Path)
+import std.json (Error, ErrorKind, PullParser)
+import std.range (InclusiveRange)
+
+fn parse_range_into(
+  range: mut InclusiveRange,
+  parser: mut PullParser,
+) -> Result[Nil, Error] {
+  parser
+    .object
+    .int('start', fn (v) { range.start = v })
+    .int('end', fn (v) { range.end = v })
+    .require_all
+}
+
+class Location {
+  let @lines: InclusiveRange
+  let @columns: InclusiveRange
+
+  fn static default -> Location {
+    Location(1.to(1), 1.to(1))
+  }
+
+  fn static parse_into(
+    location: mut Location,
+    parser: mut PullParser,
+  ) -> Result[Nil, Error] {
+    parser
+      .object
+      .key('lines', fn { parse_range_into(location.lines, parser) })
+      .key('columns', fn { parse_range_into(location.columns, parser) })
+      .require_all
+  }
+}
+
+class Module {
+  let @name: String
+  let @file: Path
+  let @documentation: String
+  let @constants: Array[Constant]
+  let @methods: Array[Method]
+  let @classes: Array[Class]
+  let @traits: Array[Trait]
+
+  fn static parse_file(path: Path) -> Result[Module, Error] {
+    let mod = Module(
+      name: '',
+      file: ''.to_path,
+      documentation: '',
+      constants: [],
+      methods: [],
+      classes: [],
+      traits: [],
+    )
+
+    # TODO: stream the input file
+    let bytes = ByteArray.new
+
+    try ReadOnlyFile
+      .new(path.clone)
+      .then(fn (f) { f.read_all(bytes) })
+      .map_error(fn (e) { Error(kind: ErrorKind.Read(e), offset: 0) })
+
+    let parser = PullParser.new(bytes)
+
+    try parser
+      .object
+      .string('name', fn (v) { mod.name = v })
+      .string('file', fn (v) { mod.file = v.to_path })
+      .string('documentation', fn (v) { mod.documentation = v })
+      .values('constants', fn {
+        Constant.parse(parser).map(fn (v) { mod.constants.push(v) })
+      })
+      .require_all
+
+    Result.Ok(mod)
+  }
+}
+
+class Constant {
+  let @name: String
+  let @location: Location
+  let @public: Bool
+  let @type: String
+  let @documentation: String
+
+  fn static parse(parser: mut PullParser) -> Result[Constant, Error] {
+    let const = Constant(
+      name: '',
+      location: Location.default,
+      public: false,
+      type: '',
+      documentation: '',
+    )
+
+    try parser
+      .object
+      .string('name', fn (v) { const.name = v })
+      .key('location', fn { Location.parse_into(const.location, parser) })
+      .bool('public', fn (v) { const.public = v })
+      .string('type', fn (v) { const.type = v })
+      .string('documentation', fn (v) { const.documentation = v })
+      .require_all
+
+    Result.Ok(const)
+  }
+}
+
+class Field {
+  let @name: String
+  let @location: Location
+  let @public: Bool
+  let @type: String
+  let @documentation: String
+}
+
+class Constructor {
+  let @name: String
+  let @location: Location
+  let @type: String
+  let @documentation: String
+}
+
+class enum MethodKind {
+  case Instance
+  case Mutable
+  case Moving
+  case Async
+  case AsyncMutable
+  case Destructor
+  case Static
+  case Extern
+
+  fn static from(value: Int) -> MethodKind {
+    match value {
+      case 1 -> MethodKind.Mutable
+      case 2 -> MethodKind.Moving
+      case 3 -> MethodKind.Async
+      case 4 -> MethodKind.AsyncMutable
+      case 5 -> MethodKind.Destructor
+      case 6 -> MethodKind.Static
+      case 7 -> MethodKind.Extern
+      case _ -> MethodKind.Instance
+    }
+  }
+}
+
+class Method {
+  let @name: String
+  let @kind: MethodKind
+  let @file: Path
+  let @location: Location
+  let @public: Bool
+  let @type: String
+  let @documentation: String
+}
+
+class enum ClassKind {
+  case Regular
+  case Enum
+  case Async
+  case Extern
+  case Tuple
+  case ValueType
+  case Atomic
+
+  fn static from(value: Int) -> ClassKind {
+    match value {
+      case 1 -> ClassKind.Enum
+      case 2 -> ClassKind.Async
+      case 3 -> ClassKind.Extern
+      case 4 -> ClassKind.Tuple
+      case 5 -> ClassKind.ValueType
+      case 6 -> ClassKind.Atomic
+      case _ -> ClassKind.Regular
+    }
+  }
+}
+
+class Class {
+  let @name: String
+  let @kind: ClassKind
+  let @file: Path
+  let @location: Location
+  let @public: Bool
+  let @type: String
+  let @documentation: String
+  let @fields: Array[Field]
+  let @methods: Array[Method]
+}
+
+class Trait {
+  let @name: String
+  let @file: Path
+  let @location: Location
+  let @public: Bool
+  let @type: String
+  let @documentation: String
+  let @required_methods: Array[Method]
+  let @default_methods: Array[Method]
+}

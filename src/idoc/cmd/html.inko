@@ -1,7 +1,8 @@
+import idoc.ir (Constant, Module)
 import std.fs.file (ReadOnlyFile, WriteOnlyFile)
 import std.fs.path (Path)
 import std.io (Write)
-import std.json (PullParser)
+import std.json (Error, PullParser)
 import std.optparse (Help, Options)
 import std.range (InclusiveRange)
 
@@ -14,108 +15,6 @@ let DEFAULT_DIR = 'build/docs'
 
 # The directory to store the output in.
 let OUTPUT_DIR = 'build/idoc'
-
-class Location {
-  let @lines: InclusiveRange
-  let @columns: InclusiveRange
-}
-
-class Module {
-  let @name: String
-  let @file: Path
-  let @documentation: String
-}
-
-class Constant {
-  let @name: String
-  let @location: Location
-  let @public: Bool
-  let @type: String
-  let @documentation: String
-}
-
-class Field {
-  let @name: String
-  let @location: Location
-  let @public: Bool
-  let @type: String
-  let @documentation: String
-}
-
-class Constructor {
-  let @name: String
-  let @location: Location
-  let @type: String
-  let @documentation: String
-}
-
-class enum MethodKind {
-  case Instance
-  case Mutable
-  case Moving
-  case Async
-  case AsyncMutable
-  case Destructor
-  case Static
-  case Extern
-
-  fn static from(value: Int) -> MethodKind {
-    match value {
-      case 1 -> MethodKind.Mutable
-      case 2 -> MethodKind.Moving
-      case 3 -> MethodKind.Async
-      case 4 -> MethodKind.AsyncMutable
-      case 5 -> MethodKind.Destructor
-      case 6 -> MethodKind.Static
-      case 7 -> MethodKind.Extern
-      case _ -> MethodKind.Instance
-    }
-  }
-}
-
-class Method {
-  let @name: String
-  let @kind: MethodKind
-  let @file: Path
-  let @location: Location
-  let @public: Bool
-  let @type: String
-  let @documentation: String
-}
-
-class enum ClassKind {
-  case Regular
-  case Enum
-  case Async
-  case Extern
-  case Tuple
-  case ValueType
-  case Atomic
-
-  fn static from(value: Int) -> ClassKind {
-    match value {
-      case 1 -> ClassKind.Enum
-      case 2 -> ClassKind.Async
-      case 3 -> ClassKind.Extern
-      case 4 -> ClassKind.Tuple
-      case 5 -> ClassKind.ValueType
-      case 6 -> ClassKind.Atomic
-      case _ -> ClassKind.Regular
-    }
-  }
-}
-
-class Class {
-  let @name: String
-  let @kind: ClassKind
-  let @file: Path
-  let @location: Location
-  let @public: Bool
-  let @type: String
-  let @documentation: String
-  let @fields: Array[Field]
-  let @methods: Array[Method]
-}
 
 fn usage(options: ref Options, output: mut Write) {
   let help = Help
@@ -154,6 +53,7 @@ fn run(
   # - Convert the JSON data to Markdown files, one for each module. Write these
   #   build/idoc/source/
   # - Adjust the headings in examples to be of the right level
+  # - Do all this in parallel
   # - Copy assets (e.g. CSS) from /usr/share/whatever to build/idoc/source/
   # - Generate static website using inko-wobsite, write to build/idoc/public/
 
@@ -185,69 +85,12 @@ fn run(
   })
 
   try files.into_iter.try_each(fn (path) {
-    let bytes = ByteArray.new
-
-    try ReadOnlyFile
-      .new(path.clone)
-      .then(fn (f) { f.read_all(bytes) })
-      .map_error(fn (e) { "failed to read '${path}': ${e}" })
-
-    let parser = PullParser.new(bytes)
-    let module = Module(name: '', file: ''.to_path, documentation: '')
-
-    # TODO: the order is random, so we have to buffer the data as intermediate
-    # values.
-    try parser
-      .object
-      .string('name', fn (v) { module.name = v })
-      .string('file', fn (v) { module.file = v.to_path })
-      .string('documentation', fn (v) { module.documentation = v })
-      .values('constants', fn {
-        let const = Constant(
-          name: '',
-          location: Location(lines: 1.to(1), columns: 1.to(1)),
-          public: false,
-          type: '',
-          documentation: '',
-        )
-
-        parser
-          .object
-          .string('name', fn (v) { const.name = v })
-          .key('location', fn {
-            parser
-              .object
-              .key('lines', fn {
-                parser
-                  .object
-                  .int('start', fn (v) { const.location.lines.start = v })
-                  .int('end', fn (v) { const.location.lines.end = v })
-                  .parse
-              })
-              .key('columns', fn {
-                parser
-                  .object
-                  .int('start', fn (v) { const.location.columns.start = v })
-                  .int('end', fn (v) { const.location.columns.end = v })
-                  .parse
-              })
-              .parse
-          })
-          .bool('public', fn (v) { const.public = v })
-          .string('type', fn (v) { const.type = v })
-          .string('documentation', fn (v) { const.documentation = v })
-          .parse
-      })
-      .parse
-      .map_error(fn (e) { 'failed to parse the JSON: ${e}' })
+    try Module.parse_file(path.clone).map_error(fn (e) {
+      'failed to parse ${path}: ${e}'
+    })
 
     Result.Ok(nil)
   })
-
-  # let docs = files
-  #   .into_iter
-  #   .try_reduce([], fn (acc, path) { Result.Ok(acc) })
-  #   .map_error(fn (e) { 'failed to parse the JSON files: ${e}' })
 
   Result.Ok(nil)
 }
