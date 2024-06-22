@@ -1,0 +1,1192 @@
+import idoc.ir
+import idoc.markdown (Markdown)
+import markdown
+import std.cmp (Ordering)
+import std.json (PullParser)
+import std.range (InclusiveRange)
+import std.test (Tests)
+
+fn two_paragraphs -> Markdown {
+  Markdown(markdown.Document.parse('first\n\nsecond').get)
+}
+
+fn empty_class(kind: ir.ClassKind) -> ir.Class {
+  ir.Class(
+    name: 'A',
+    location: ir.Location.default,
+    kind: kind,
+    public: true,
+    type: 'class A',
+    documentation: two_paragraphs,
+    constructors: [],
+    fields: [],
+    static_methods: [],
+    instance_methods: [],
+    implemented_traits: [],
+  )
+}
+
+fn pub tests(t: mut Tests) {
+  t.test('parse_range', fn (t) {
+    let parser = PullParser.new('{"start":2,"end":3}')
+    let res = ir.parse_range(parser)
+
+    t.equal(res, Result.Ok(InclusiveRange.new(2, 3)))
+  })
+
+  t.test('Location.default', fn (t) {
+    let loc = ir.Location.default
+
+    t.equal(loc.lines, InclusiveRange.new(1, 1))
+    t.equal(loc.columns, InclusiveRange.new(1, 1))
+  })
+
+  t.ok('Location.parse', fn (t) {
+    let parser = PullParser.new(
+      '{ "lines": { "start": 1, "end": 2 }, "columns": { "start": 3, "end": 4 } }',
+    )
+
+    let loc = try ir.Location.parse(parser)
+
+    t.equal(loc.lines, InclusiveRange.new(1, 2))
+    t.equal(loc.columns, InclusiveRange.new(3, 4))
+    Result.Ok(nil)
+  })
+
+  t.test('Location.clone', fn (t) {
+    let loc1 = ir.Location(
+      lines: InclusiveRange.new(1, 2),
+      columns: InclusiveRange.new(3, 4),
+    )
+    let loc2 = loc1.clone
+
+    t.equal(loc1.lines, loc2.lines)
+    t.equal(loc1.columns, loc2.columns)
+  })
+
+  t.ok('Module.parse_all with a valid path', fn (t) {
+    let mods = try ir.Module.parse_all('fixtures/valid'.to_path)
+    let mod = match mods.pop {
+      case Some(v) -> recover v
+      case _ -> throw 'at least a single module must be parsed'
+    }
+
+    t.equal(mod.name, 'std.foo')
+    t.equal(mod.file, 'src/std/foo.inko'.to_path)
+    Result.Ok(nil)
+  })
+
+  t.test('Module.parse_all with an invalid path', fn (t) {
+    t.true(ir.Module.parse_all('/invalid/path'.to_path).error?)
+  })
+
+  t.test('Module.parse_all with an invalid module', fn (t) {
+    t.true(ir.Module.parse_all('fixtures/invalid'.to_path).error?)
+  })
+
+  t.ok('Module.parse_file', fn (t) {
+    let path = 'fixtures/valid/simple.json'.to_path
+    let mod = try ir.Module.parse_file(path)
+
+    t.equal(mod.name, 'std.foo')
+    t.equal(mod.file, 'src/std/foo.inko'.to_path)
+    t.equal(
+      mod.documentation.to_html(increment_headings: 0).to_string,
+      '<p>Example</p>',
+    )
+    t.equal(mod.constants.size, 1)
+    t.equal(mod.methods.size, 1)
+    t.equal(mod.classes.size, 1)
+    t.equal(mod.traits.size, 1)
+
+    Result.Ok(nil)
+  })
+
+  t.test('Module.symbols? without any symbols', fn (t) {
+    let mod = ir.Module(
+      name: 'std.foo',
+      file: 'foo'.to_path,
+      documentation: Markdown.new,
+      constants: [],
+      methods: [],
+      classes: [],
+      traits: [],
+    )
+
+    t.false(mod.symbols?)
+  })
+
+  t.test('Module.symbols? with a constant', fn (t) {
+    let mod = ir.Module(
+      name: 'std.foo',
+      file: 'foo'.to_path,
+      documentation: Markdown.new,
+      constants: [
+        ir.Constant(
+          name: 'A',
+          location: ir.Location.default,
+          public: true,
+          type: 'Int',
+          documentation: Markdown.new,
+        ),
+      ],
+      methods: [],
+      classes: [],
+      traits: [],
+    )
+
+    t.true(mod.symbols?)
+  })
+
+  t.test('Module.symbols? with a method', fn (t) {
+    let mod = ir.Module(
+      name: 'std.foo',
+      file: 'foo'.to_path,
+      documentation: Markdown.new,
+      constants: [],
+      methods: [
+        ir.Method(
+          name: 'a',
+          file: 'foo'.to_path,
+          location: ir.Location.default,
+          public: true,
+          type: 'Int',
+          documentation: Markdown.new,
+        ),
+      ],
+      classes: [],
+      traits: [],
+    )
+
+    t.true(mod.symbols?)
+  })
+
+  t.test('Module.symbols? with a class', fn (t) {
+    let mod = ir.Module(
+      name: 'std.foo',
+      file: 'foo'.to_path,
+      documentation: Markdown.new,
+      constants: [],
+      methods: [],
+      classes: [
+        ir.Class(
+          name: 'A',
+          location: ir.Location.default,
+          kind: ir.ClassKind.Regular,
+          public: true,
+          type: 'class A',
+          documentation: Markdown.new,
+          constructors: [],
+          fields: [],
+          static_methods: [],
+          instance_methods: [],
+          implemented_traits: [],
+        ),
+      ],
+      traits: [],
+    )
+
+    t.true(mod.symbols?)
+  })
+
+  t.test('Module.symbols? with a trait', fn (t) {
+    let mod = ir.Module(
+      name: 'std.foo',
+      file: 'foo'.to_path,
+      documentation: Markdown.new,
+      constants: [],
+      methods: [],
+      classes: [],
+      traits: [
+        ir.Trait(
+          name: 'A',
+          location: ir.Location.default,
+          public: true,
+          type: 'trait A',
+          documentation: Markdown.new,
+          required_methods: [],
+          default_methods: [],
+          implementations: [],
+        ),
+      ],
+    )
+
+    t.true(mod.symbols?)
+  })
+
+  t.ok('Metadata.parse', fn (t) {
+    let path = 'fixtures/valid'.to_path
+    let meta = try ir.Metadata.parse(path)
+
+    t.equal(
+      meta.readme.to_html(increment_headings: 0).to_string,
+      '<p>This is the README</p>',
+    )
+
+    Result.Ok(nil)
+  })
+
+  t.ok('Constant.parse', fn (t) {
+    let parser = PullParser.new(
+      '
+      {
+        "name": "A",
+        "location": {
+          "lines": { "start": 1, "end": 2 },
+          "columns": { "start": 1, "end": 2 }
+        } ,
+        "public": true,
+        "type": "Int",
+        "documentation": "Example"
+      }
+      ',
+    )
+
+    let const = try ir.Constant.parse(parser)
+
+    t.equal(const.name, 'A')
+    t.equal(const.location.lines, InclusiveRange.new(1, 2))
+    t.equal(const.location.columns, InclusiveRange.new(1, 2))
+    t.equal(const.public, true)
+    t.equal(const.type, 'Int')
+    t.equal(
+      const.documentation.to_html(increment_headings: 0).to_string,
+      '<p>Example</p>',
+    )
+
+    Result.Ok(nil)
+  })
+
+  t.test('Constant.cmp', fn (t) {
+    let a = ir.Constant(
+      name: 'A',
+      location: ir.Location.default,
+      public: true,
+      type: 'Int',
+      documentation: Markdown.new,
+    )
+    let b = ir.Constant(
+      name: 'B',
+      location: ir.Location.default,
+      public: true,
+      type: 'Int',
+      documentation: Markdown.new,
+    )
+
+    t.equal(a.cmp(b), Ordering.Less)
+    t.equal(a.cmp(a), Ordering.Equal)
+    t.equal(b.cmp(a), Ordering.Greater)
+  })
+
+  t.test('Constant.clone', fn (t) {
+    let a = ir.Constant(
+      name: 'A',
+      location: ir.Location.default,
+      public: true,
+      type: 'Int',
+      documentation: Markdown.new,
+    )
+    let b = a.clone
+
+    t.equal(b.name, a.name)
+    t.equal(b.location.lines, a.location.lines)
+    t.equal(b.location.columns, a.location.columns)
+    t.equal(b.public, a.public)
+    t.equal(b.type, a.type)
+    t.equal(
+      b.documentation.to_html(increment_headings: 0).to_string,
+      a.documentation.to_html(increment_headings: 0).to_string,
+    )
+  })
+
+  t.test('Constant.summary', fn (t) {
+    let const = ir.Constant(
+      name: 'A',
+      location: ir.Location.default,
+      public: true,
+      type: 'Int',
+      documentation: two_paragraphs,
+    )
+
+    t.equal(
+      const.summary.to_html(increment_headings: 0).to_string,
+      '<p>first</p>',
+    )
+  })
+
+  t.test('Constant.public?', fn (t) {
+    let public = ir.Constant(
+      name: 'A',
+      location: ir.Location.default,
+      public: true,
+      type: 'Int',
+      documentation: Markdown.new,
+    )
+
+    let private = ir.Constant(
+      name: 'A',
+      location: ir.Location.default,
+      public: false,
+      type: 'Int',
+      documentation: Markdown.new,
+    )
+
+    t.true(public.public?)
+    t.false(private.public?)
+  })
+
+  t.test('Constant.value_semantics', fn (t) {
+    let const = ir.Constant(
+      name: 'A',
+      location: ir.Location.default,
+      public: true,
+      type: 'Int',
+      documentation: Markdown.new,
+    )
+
+    t.true(
+      match const.value_semantics {
+        case Regular -> true
+        case _ -> false
+      },
+    )
+  })
+
+  t.ok('Field.parse', fn (t) {
+    let parser = PullParser.new(
+      '
+      {
+        "name": "foo",
+        "location": {
+          "lines": { "start": 1, "end": 2 },
+          "columns": { "start": 1, "end": 2 }
+        },
+        "public": true,
+        "type": "Int",
+        "documentation": "Example"
+      }
+      ',
+    )
+
+    let field = try ir.Field.parse(parser)
+
+    t.equal(field.name, 'foo')
+    t.equal(field.location.lines, InclusiveRange.new(1, 2))
+    t.equal(field.location.columns, InclusiveRange.new(1, 2))
+    t.equal(field.public, true)
+    t.equal(field.type, 'Int')
+    t.equal(
+      field.documentation.to_html(increment_headings: 0).to_string,
+      '<p>Example</p>',
+    )
+
+    Result.Ok(nil)
+  })
+
+  t.test('Field.clone', fn (t) {
+    let a = ir.Field(
+      name: 'A',
+      location: ir.Location.default,
+      public: true,
+      type: 'Int',
+      documentation: Markdown.new,
+    )
+    let b = a.clone
+
+    t.equal(b.name, a.name)
+    t.equal(b.location.lines, a.location.lines)
+    t.equal(b.location.columns, a.location.columns)
+    t.equal(b.type, a.type)
+  })
+
+  t.ok('Constructor.parse', fn (t) {
+    let parser = PullParser.new(
+      '
+      {
+        "name": "A",
+        "location": {
+          "lines": { "start": 1, "end": 2 },
+          "columns": { "start": 1, "end": 2 }
+        },
+        "type": "Int",
+        "documentation": "Example"
+      }
+      ',
+    )
+
+    let const = try ir.Constructor.parse(parser)
+
+    t.equal(const.name, 'A')
+    t.equal(const.location.lines, InclusiveRange.new(1, 2))
+    t.equal(const.location.columns, InclusiveRange.new(1, 2))
+    t.equal(const.type, 'Int')
+    t.equal(
+      const.documentation.to_html(increment_headings: 0).to_string,
+      '<p>Example</p>',
+    )
+
+    Result.Ok(nil)
+  })
+
+  t.test('Constructor.clone', fn (t) {
+    let a = ir.Constructor(
+      name: 'A',
+      location: ir.Location.default,
+      type: 'Int',
+      documentation: Markdown.new,
+    )
+    let b = a.clone
+
+    t.equal(b.name, a.name)
+    t.equal(b.location.lines, a.location.lines)
+    t.equal(b.location.columns, a.location.columns)
+    t.equal(b.type, a.type)
+  })
+
+  t.ok('Method.parse', fn (t) {
+    let parser = PullParser.new(
+      '
+      {
+        "name": "foo",
+        "file": "test.inko",
+        "location": {
+          "lines": { "start": 1, "end": 2 },
+          "columns": { "start": 1, "end": 2 }
+        },
+        "public": true,
+        "type": "fn foo",
+        "documentation": "Example"
+      }
+      ',
+    )
+    let method = try ir.Method.parse(parser)
+
+    t.equal(method.name, 'foo')
+    t.equal(method.file, 'test.inko'.to_path)
+    t.equal(method.location.lines, InclusiveRange.new(1, 2))
+    t.equal(method.location.columns, InclusiveRange.new(1, 2))
+    t.equal(method.public, true)
+    t.equal(method.type, 'fn foo')
+    t.equal(
+      method.documentation.to_html(increment_headings: 0).to_string,
+      '<p>Example</p>',
+    )
+
+    Result.Ok(nil)
+  })
+
+  t.test('Method.clone', fn (t) {
+    let a = ir.Method(
+      name: 'foo',
+      file: 'test.inko'.to_path,
+      location: ir.Location.default,
+      public: true,
+      type: 'fn foo',
+      documentation: Markdown.new,
+    )
+    let b = a.clone
+
+    t.equal(b.name, a.name)
+    t.equal(b.file, a.file)
+    t.equal(b.location.lines, a.location.lines)
+    t.equal(b.location.columns, a.location.columns)
+    t.equal(b.public, a.public)
+    t.equal(b.type, a.type)
+  })
+
+  t.test('Method.cmp', fn (t) {
+    let a = ir.Method(
+      name: 'a',
+      file: 'test.inko'.to_path,
+      location: ir.Location.default,
+      public: true,
+      type: '',
+      documentation: Markdown.new,
+    )
+    let b = ir.Method(
+      name: 'b',
+      file: 'test.inko'.to_path,
+      location: ir.Location.default,
+      public: true,
+      type: '',
+      documentation: Markdown.new,
+    )
+
+    t.equal(a.cmp(b), Ordering.Less)
+    t.equal(b.cmp(a), Ordering.Greater)
+    t.equal(a.cmp(a), Ordering.Equal)
+  })
+
+  t.test('Method.summary', fn (t) {
+    let method = ir.Method(
+      name: 'foo',
+      file: 'test.inko'.to_path,
+      location: ir.Location.default,
+      public: true,
+      type: 'fn foo',
+      documentation: two_paragraphs,
+    )
+
+    t.equal(
+      method.summary.to_html(increment_headings: 0).to_string,
+      '<p>first</p>',
+    )
+  })
+
+  t.test('Method.value_semantics', fn (t) {
+    let method = ir.Method(
+      name: 'foo',
+      file: 'test.inko'.to_path,
+      location: ir.Location.default,
+      public: true,
+      type: 'fn foo',
+      documentation: Markdown.new,
+    )
+
+    t.true(
+      match method.value_semantics {
+        case Regular -> true
+        case _ -> false
+      },
+    )
+  })
+
+  t.test('ClassKind.from', fn (t) {
+    t.true(
+      match ir.ClassKind.from(0) {
+        case Regular -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match ir.ClassKind.from(1) {
+        case Enum -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match ir.ClassKind.from(2) {
+        case Async -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match ir.ClassKind.from(3) {
+        case Extern -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match ir.ClassKind.from(4) {
+        case ValueType -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match ir.ClassKind.from(5) {
+        case Atomic -> true
+        case _ -> false
+      },
+    )
+  })
+
+  t.test('ClassKind.clone', fn (t) {
+    t.true(
+      match ir.ClassKind.Regular.clone {
+        case Regular -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match ir.ClassKind.Enum.clone {
+        case Enum -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match ir.ClassKind.Async.clone {
+        case Async -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match ir.ClassKind.Extern.clone {
+        case Extern -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match ir.ClassKind.ValueType.clone {
+        case ValueType -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match ir.ClassKind.Atomic.clone {
+        case Atomic -> true
+        case _ -> false
+      },
+    )
+  })
+
+  t.ok('Implementation.parse', fn (t) {
+    let parser = PullParser.new(
+      '
+      {
+        "module": "std.foo",
+        "name": "Foo",
+        "type": "impl Foo",
+        "public": true
+      }
+      ',
+    )
+    let imp = try ir.Implementation.parse(parser)
+
+    t.equal(imp.module, 'std.foo')
+    t.equal(imp.name, 'Foo')
+    t.equal(imp.type, 'impl Foo')
+    t.equal(imp.public, true)
+
+    Result.Ok(nil)
+  })
+
+  t.test('Implementation.clone', fn (t) {
+    let a = ir.Implementation(
+      module: 'std.foo',
+      name: 'Foo',
+      type: 'impl Foo',
+      public: true,
+    )
+    let b = a.clone
+
+    t.equal(b.module, a.module)
+    t.equal(b.name, a.name)
+    t.equal(b.type, a.type)
+    t.equal(b.public, a.public)
+  })
+
+  t.test('Implementation.cmp', fn (t) {
+    let a = ir.Implementation(module: 'a', name: 'A', type: '', public: true)
+    let b = ir.Implementation(module: 'a', name: 'B', type: '', public: true)
+    let c = ir.Implementation(module: 'b', name: 'A', type: '', public: true)
+
+    t.equal(a.cmp(b), Ordering.Less)
+    t.equal(b.cmp(a), Ordering.Greater)
+    t.equal(a.cmp(c), Ordering.Less)
+    t.equal(a.cmp(a), Ordering.Equal)
+  })
+
+  t.ok('Class.parse', fn (t) {
+    let parser = PullParser.new(
+      '
+      {
+        "name": "A",
+        "location": {
+          "lines": { "start": 1, "end": 2 },
+          "columns": { "start": 1, "end": 2 }
+        },
+        "kind": 0,
+        "public": true,
+        "type": "class A",
+        "documentation": "Example",
+        "constructors": [
+          {
+            "name": "A",
+            "location": {
+              "lines": { "start": 1, "end": 2 },
+              "columns": { "start": 1, "end": 2 }
+            },
+            "type": "A",
+            "documentation": ""
+          }
+        ],
+        "fields": [
+          {
+            "name": "foo",
+            "location": {
+              "lines": { "start": 1, "end": 2 },
+              "columns": { "start": 1, "end": 2 }
+            },
+            "public": true,
+            "type": "Int",
+            "documentation": "Example"
+          }
+        ],
+        "static_methods": [
+          {
+            "name": "foo",
+            "file": "test.inko",
+            "location": {
+              "lines": { "start": 1, "end": 2 },
+              "columns": { "start": 1, "end": 2 }
+            },
+            "public": true,
+            "type": "fn static foo",
+            "documentation": "Example"
+          }
+        ],
+        "instance_methods": [
+          {
+            "name": "foo",
+            "file": "test.inko",
+            "location": {
+              "lines": { "start": 1, "end": 2 },
+              "columns": { "start": 1, "end": 2 }
+            },
+            "public": true,
+            "type": "fn foo",
+            "documentation": "Example"
+          }
+        ],
+        "implemented_traits": [
+          {
+            "module": "std.foo",
+            "name": "Foo",
+            "type": "impl Foo",
+            "public": true
+          }
+        ]
+      }
+      ',
+    )
+
+    let cls = try ir.Class.parse(parser)
+
+    t.equal(cls.name, 'A')
+    t.equal(cls.location.lines, InclusiveRange.new(1, 2))
+    t.equal(cls.location.columns, InclusiveRange.new(1, 2))
+    t.true(
+      match cls.kind {
+        case Regular -> true
+        case _ -> false
+      },
+    )
+    t.equal(cls.public, true)
+    t.equal(cls.type, 'class A')
+    t.equal(
+      cls.documentation.to_html(increment_headings: 0).to_string,
+      '<p>Example</p>',
+    )
+    t.equal(cls.constructors.size, 1)
+    t.equal(cls.fields.size, 1)
+    t.equal(cls.static_methods.size, 1)
+    t.equal(cls.instance_methods.size, 1)
+    t.equal(cls.implemented_traits.size, 1)
+
+    Result.Ok(nil)
+  })
+
+  t.test('Class.cmp', fn (t) {
+    let a = ir.Class(
+      name: 'A',
+      location: ir.Location.default,
+      kind: ir.ClassKind.Regular,
+      public: true,
+      type: 'class A',
+      documentation: Markdown.new,
+      constructors: [],
+      fields: [],
+      static_methods: [],
+      instance_methods: [],
+      implemented_traits: [],
+    )
+    let b = ir.Class(
+      name: 'B',
+      location: ir.Location.default,
+      kind: ir.ClassKind.Regular,
+      public: true,
+      type: 'class A',
+      documentation: Markdown.new,
+      constructors: [],
+      fields: [],
+      static_methods: [],
+      instance_methods: [],
+      implemented_traits: [],
+    )
+
+    t.equal(a.cmp(b), Ordering.Less)
+    t.equal(b.cmp(a), Ordering.Greater)
+    t.equal(a.cmp(a), Ordering.Equal)
+  })
+
+  t.test('Class.clone', fn (t) {
+    let a = ir.Class(
+      name: 'A',
+      location: ir.Location.default,
+      kind: ir.ClassKind.Regular,
+      public: true,
+      type: 'class A',
+      documentation: Markdown.new,
+      constructors: [
+        ir.Constructor(
+          name: 'A',
+          location: ir.Location.default,
+          type: 'Int',
+          documentation: Markdown.new,
+        ),
+      ],
+      fields: [
+        ir.Field(
+          name: 'A',
+          location: ir.Location.default,
+          public: true,
+          type: 'Int',
+          documentation: Markdown.new,
+        ),
+      ],
+      static_methods: [
+        ir.Method(
+          name: 'foo',
+          file: 'test.inko'.to_path,
+          location: ir.Location.default,
+          public: true,
+          type: 'fn foo',
+          documentation: Markdown.new,
+        ),
+      ],
+      instance_methods: [
+        ir.Method(
+          name: 'foo',
+          file: 'test.inko'.to_path,
+          location: ir.Location.default,
+          public: true,
+          type: 'fn foo',
+          documentation: Markdown.new,
+        ),
+      ],
+      implemented_traits: [
+        ir.Implementation(
+          module: 'std.foo',
+          name: 'Foo',
+          type: 'impl Foo',
+          public: true,
+        ),
+      ],
+    )
+    let b = a.clone
+
+    t.equal(b.name, a.name)
+    t.equal(b.location.lines, a.location.lines)
+    t.equal(b.location.columns, a.location.columns)
+    t.true(
+      match b.kind {
+        case Regular -> true
+        case _ -> false
+      },
+    )
+    t.equal(b.public, a.public)
+    t.equal(b.type, a.type)
+    t.equal(b.constructors.size, a.constructors.size)
+    t.equal(b.static_methods.size, a.static_methods.size)
+    t.equal(b.instance_methods.size, a.instance_methods.size)
+    t.equal(b.implemented_traits.size, a.implemented_traits.size)
+  })
+
+  t.test('Class.summary', fn (t) {
+    let cls = ir.Class(
+      name: 'A',
+      location: ir.Location.default,
+      kind: ir.ClassKind.Regular,
+      public: true,
+      type: 'class A',
+      documentation: two_paragraphs,
+      constructors: [],
+      fields: [],
+      static_methods: [],
+      instance_methods: [],
+      implemented_traits: [],
+    )
+
+    t.equal(
+      cls.summary.to_html(increment_headings: 0).to_string,
+      '<p>first</p>',
+    )
+  })
+
+  t.test('Class.value_semantics', fn (t) {
+    let atomic_class = empty_class(ir.ClassKind.Atomic)
+    let async_class = empty_class(ir.ClassKind.Async)
+    let extern_class = empty_class(ir.ClassKind.Extern)
+    let value_class = empty_class(ir.ClassKind.ValueType)
+    let regular_class = empty_class(ir.ClassKind.Regular)
+
+    t.true(
+      match atomic_class.value_semantics {
+        case Atomic -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match async_class.value_semantics {
+        case Atomic -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match extern_class.value_semantics {
+        case Value -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match value_class.value_semantics {
+        case Value -> true
+        case _ -> false
+      },
+    )
+    t.true(
+      match regular_class.value_semantics {
+        case Regular -> true
+        case _ -> false
+      },
+    )
+  })
+
+  t.ok('Trait.parse', fn (t) {
+    let parser = PullParser.new(
+      '
+      {
+        "name": "A",
+        "location": {
+          "lines": { "start": 1, "end": 2 },
+          "columns": { "start": 1, "end": 2 }
+        },
+        "public": true,
+        "type": "class A",
+        "documentation": "Example",
+        "default_methods": [
+          {
+            "name": "foo",
+            "file": "test.inko",
+            "location": {
+              "lines": { "start": 1, "end": 2 },
+              "columns": { "start": 1, "end": 2 }
+            },
+            "public": true,
+            "type": "fn foo",
+            "documentation": "Example"
+          }
+        ],
+        "required_methods": [
+          {
+            "name": "foo",
+            "file": "test.inko",
+            "location": {
+              "lines": { "start": 1, "end": 2 },
+              "columns": { "start": 1, "end": 2 }
+            },
+            "public": true,
+            "type": "fn foo",
+            "documentation": "Example"
+          }
+        ],
+        "implementations": [
+          {
+            "module": "std.foo",
+            "name": "Foo",
+            "type": "impl Foo",
+            "public": true
+          }
+        ]
+      }
+      ',
+    )
+
+    let trt = try ir.Trait.parse(parser)
+
+    t.equal(trt.name, 'A')
+    t.equal(trt.location.lines, InclusiveRange.new(1, 2))
+    t.equal(trt.location.columns, InclusiveRange.new(1, 2))
+    t.equal(trt.public, true)
+    t.equal(trt.type, 'class A')
+    t.equal(
+      trt.documentation.to_html(increment_headings: 0).to_string,
+      '<p>Example</p>',
+    )
+    t.equal(trt.default_methods.size, 1)
+    t.equal(trt.required_methods.size, 1)
+    t.equal(trt.implementations.size, 1)
+
+    Result.Ok(nil)
+  })
+
+  t.test('Trait.cmp', fn (t) {
+    let a = ir.Trait(
+      name: 'A',
+      location: ir.Location.default,
+      public: true,
+      type: 'trait A',
+      documentation: Markdown.new,
+      required_methods: [],
+      default_methods: [],
+      implementations: [],
+    )
+    let b = ir.Trait(
+      name: 'B',
+      location: ir.Location.default,
+      public: true,
+      type: 'trait A',
+      documentation: Markdown.new,
+      required_methods: [],
+      default_methods: [],
+      implementations: [],
+    )
+
+    t.equal(a.cmp(b), Ordering.Less)
+    t.equal(b.cmp(a), Ordering.Greater)
+    t.equal(a.cmp(a), Ordering.Equal)
+  })
+
+  t.test('Trait.clone', fn (t) {
+    let a = ir.Trait(
+      name: 'A',
+      location: ir.Location.default,
+      public: true,
+      type: 'trait A',
+      documentation: Markdown.new,
+      required_methods: [
+        ir.Method(
+          name: 'a',
+          file: 'foo'.to_path,
+          location: ir.Location.default,
+          public: true,
+          type: 'Int',
+          documentation: Markdown.new,
+        ),
+      ],
+      default_methods: [
+        ir.Method(
+          name: 'a',
+          file: 'foo'.to_path,
+          location: ir.Location.default,
+          public: true,
+          type: 'Int',
+          documentation: Markdown.new,
+        ),
+      ],
+      implementations: [
+        ir.Implementation(
+          module: 'std.foo',
+          name: 'Foo',
+          type: 'impl Foo',
+          public: true,
+        ),
+      ],
+    )
+    let b = a.clone
+
+    t.equal(b.name, a.name)
+    t.equal(b.location.lines, a.location.lines)
+    t.equal(b.location.columns, a.location.columns)
+    t.equal(b.public, a.public)
+    t.equal(b.type, a.type)
+    t.equal(b.required_methods.size, a.required_methods.size)
+    t.equal(b.default_methods.size, a.default_methods.size)
+    t.equal(b.implementations.size, a.implementations.size)
+  })
+
+  t.test('Trait.summary', fn (t) {
+    let trt = ir.Trait(
+      name: 'A',
+      location: ir.Location.default,
+      public: true,
+      type: 'trait A',
+      documentation: two_paragraphs,
+      required_methods: [],
+      default_methods: [],
+      implementations: [],
+    )
+
+    t.equal(
+      trt.summary.to_html(increment_headings: 0).to_string,
+      '<p>first</p>',
+    )
+  })
+
+  t.test('Trait.value_semantics', fn (t) {
+    let trt = ir.Trait(
+      name: 'A',
+      location: ir.Location.default,
+      public: true,
+      type: 'trait A',
+      documentation: two_paragraphs,
+      required_methods: [],
+      default_methods: [],
+      implementations: [],
+    )
+
+    t.true(
+      match trt.value_semantics {
+        case Regular -> true
+        case _ -> false
+      },
+    )
+  })
+
+  t.test('Parser.parse with valid modules', fn (t) {
+    let dir = recover 'fixtures/valid/simple.json'.to_path
+    let chan = Channel.new(size: 1)
+
+    ir.Parser().parse(dir, chan)
+    t.true(chan.receive.ok?)
+  })
+
+  t.test('Parser.parse with invalid modules', fn (t) {
+    let dir = recover 'fixtures/invalid/simple.json'.to_path
+    let chan = Channel.new(size: 1)
+
+    ir.Parser().parse(dir, chan)
+    t.true(chan.receive.error?)
+  })
+
+  t.ok('MethodWithSource.array_of', fn (t) {
+    let raw = [
+      ir.Method(
+        name: 'example',
+        file: 'fixtures/method.inko'.to_path,
+        location: ir.Location(lines: 2.to(5), columns: 1.to(1)),
+        public: true,
+        type: 'fn example',
+        documentation: Markdown.new,
+      ),
+    ]
+    let methods = try ir.MethodWithSource.array_of(raw)
+
+    t.equal(methods.size, 1)
+    t.equal(methods.get(0).node.name, 'example')
+    t.equal(methods.get(0).source.to_string, 'fn example {\n  10\n  20\n}')
+
+    Result.Ok(nil)
+  })
+
+  t.ok('MethodWithSource.from', fn (t) {
+    let raw = ir.Method(
+      name: 'example',
+      file: 'fixtures/method.inko'.to_path,
+      location: ir.Location(lines: 2.to(5), columns: 1.to(1)),
+      public: true,
+      type: 'fn example',
+      documentation: Markdown.new,
+    )
+    let method = try ir.MethodWithSource.from(raw)
+
+    t.equal(method.node.name, 'example')
+    t.equal(method.source.to_string, 'fn example {\n  10\n  20\n}')
+
+    Result.Ok(nil)
+  })
+
+  t.test('MethodWithSource.documentation', fn (t) {
+    let raw = ir.Method(
+      name: 'example',
+      file: 'fixtures/method.inko'.to_path,
+      location: ir.Location(lines: 2.to(5), columns: 1.to(1)),
+      public: true,
+      type: 'fn example',
+      documentation: Markdown(markdown.Document.parse('# foo').get),
+    )
+    let method = ir.MethodWithSource(node: raw, source: ByteArray.new)
+
+    t.equal(method.documentation.to_string, '<h4>foo</h4>')
+  })
+}

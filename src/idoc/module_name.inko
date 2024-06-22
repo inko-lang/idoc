@@ -1,0 +1,67 @@
+import idoc.ir (Module)
+import std.clone (Clone)
+import std.cmp (Compare, Ordering)
+import std.string (StringBuffer)
+
+class ModuleName {
+  let @name: String
+  let @uri: String
+
+  fn static array_of(modules: ref Array[uni Module]) -> Array[ModuleName] {
+    let links = []
+    let mut idx = 0
+
+    while idx < modules.size {
+      links.push(ModuleName.new(modules.get(idx := idx + 1).name))
+    }
+
+    links.sort
+    links
+  }
+
+  fn static new(name: String) -> ModuleName {
+    let uri = StringBuffer.new
+
+    uri.push('module/')
+    uri.push(name.replace('.', '/'))
+    uri.push('/')
+
+    ModuleName(name: name, uri: uri.into_string)
+  }
+
+  fn symbol_html_uri(name: String) -> String {
+    '${@uri}${name}/index.html'
+  }
+
+  fn symbol_source_uri(name: String) -> String {
+    '${@uri}${name}/index.md'
+  }
+
+  fn source_uri -> String {
+    '${@uri}index.md'
+  }
+
+  fn html_uri -> String {
+    '${@uri}index.html'
+  }
+
+  fn symbol_link(name: String) -> String {
+    '${link}${name}'
+  }
+
+  fn link -> String {
+    '/${@uri}'
+  }
+}
+
+impl Clone[ModuleName] for ModuleName {
+  fn pub clone -> ModuleName {
+    ModuleName(name: @name, uri: @uri)
+  }
+}
+
+impl Compare[ModuleName] for ModuleName {
+  fn pub cmp(other: ref ModuleName) -> Ordering {
+    @name.cmp(other.name)
+  }
+}

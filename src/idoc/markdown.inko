@@ -1,0 +1,56 @@
+import builder.html
+import idoc.html (adjust_headings)
+import markdown
+import std.clone (Clone)
+import std.json
+import wobsite.markdown (SyntaxHighlight)
+
+# A Markdown document.
+class Markdown {
+  let @inner: markdown.Document
+
+  fn static new -> Markdown {
+    Markdown(markdown.Document.new)
+  }
+
+  fn static parse(parser: mut json.PullParser) -> Result[Markdown, json.Error] {
+    let start = try parser.start_of_next_value
+
+    parser.string.then(fn (md) {
+      markdown.Document.parse(md).map(fn (v) { Markdown(v) }).map_error(
+        fn (e) { json.Error.generic(e.message, start + e.offset) },
+      )
+    })
+  }
+
+  fn empty? -> Bool {
+    @inner.children.empty?
+  }
+
+  fn to_html(increment_headings: Int) -> html.Document {
+    let doc = @inner.to_html
+
+    SyntaxHighlight.new.run(doc)
+
+    if increment_headings > 0 { adjust_headings(doc, increment_headings) }
+
+    doc
+  }
+
+  fn summary -> Markdown {
+    let doc = markdown.Document.new
+
+    match @inner.children.opt(0) {
+      case Some(v) -> doc.children.push(v.clone)
+      case _ -> {}
+    }
+
+    Markdown(doc)
+  }
+}
+
+impl Clone[Markdown] for Markdown {
+  fn pub clone -> Markdown {
+    Markdown(@inner.clone)
+  }
+}

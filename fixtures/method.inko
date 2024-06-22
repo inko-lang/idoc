@@ -1,0 +1,6 @@
+class Foo {
+  fn example {
+    10
+    20
+  }
+}

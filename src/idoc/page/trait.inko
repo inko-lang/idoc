@@ -1,0 +1,97 @@
+import builder.html
+import idoc.fs (read_source_code)
+import idoc.html (
+  atomic, container, head, header, highlight_inko, implementations, link_to,
+  methods, page_title, private, search_results, sidebar, source_block,
+  symbol_info, type_signature, value_type, with_table_of_contents,
+)
+import idoc.ir
+import idoc.module_name (ModuleName)
+import std.set (Set)
+import wobsite (Files, UpdateAssetLinks)
+import wobsite.url (file_url)
+
+class Page {
+  let @module: ModuleName
+  let @source: String
+  let @trait: ir.Trait
+  let @modules: Array[ModuleName]
+
+  fn static new(
+    module: ModuleName,
+    node: ir.Trait,
+    modules: Array[ModuleName],
+  ) -> Page {
+    let src = module.symbol_source_uri(node.name)
+
+    Page(module: module, source: src, trait: node, modules: modules)
+  }
+
+  fn signature_html -> html.Document {
+    highlight_inko(@trait.type.to_byte_array)
+  }
+
+  fn documentation_html -> html.Document {
+    @trait.documentation.to_html(increment_headings: 1)
+  }
+
+  fn to_html(files: ref Files) -> Result[String, String] {
+    let required_methods = try ir.MethodWithSource.array_of(
+      @trait.required_methods,
+    )
+    let default_methods = try ir.MethodWithSource.array_of(
+      @trait.default_methods,
+    )
+    let current_url = file_url(files.source, files.source.join(@source))
+    let result = html.Document.html('en', fn (h) {
+      h.add(head(current_url, title: '${@module.name}.${@trait.name}'))
+
+      h.body.with(fn (body) {
+        header(body, current_url)
+
+        container(body, fn (div) {
+          sidebar(div, @module.uri, current_url, @modules)
+          search_results(div)
+
+          with_table_of_contents(div, fn (content) {
+            content.header.with(fn (h) {
+              page_title(h, fn (t) {
+                link_to(t, current_url, @module.link, text: @module.name)
+                t.text('.')
+                t.text(@trait.name)
+              })
+
+              if @trait.public.false? { private(h) }
+            })
+
+            content.append(signature_html)
+            content.append(documentation_html)
+
+            if @trait.required_methods.size > 0 {
+              content.h2.text('Required methods')
+              methods(content, required_methods)
+            }
+
+            if @trait.default_methods.size > 0 {
+              content.h2.text('Default methods')
+              methods(content, default_methods)
+            }
+
+            if @trait.implementations.size > 0 {
+              content.h2.text('Implementations')
+              implementations(
+                content,
+                current_url,
+                @modules,
+                @trait.implementations,
+              )
+            }
+          })
+        })
+      })
+    })
+
+    UpdateAssetLinks.new(files, current_url).run(result)
+    Result.Ok(result.to_string)
+  }
+}

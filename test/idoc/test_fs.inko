@@ -1,0 +1,29 @@
+import idoc.fs
+import std.env
+import std.test (Tests)
+
+fn pub tests(t: mut Tests) {
+  t.test('read_source_code', fn (t) {
+    let path = './fixtures/source.inko'.to_path
+
+    t.equal(
+      fs.read_source_code(path, lines: 2.to(3), dedent: 0),
+      Result.Ok('  200\n  300'.to_byte_array),
+    )
+    t.equal(
+      fs.read_source_code(path, lines: 2.to(3), dedent: 2),
+      Result.Ok('200\n300'.to_byte_array),
+    )
+  })
+
+  t.test('copy_files', fn (t) {
+    let from = './fixtures'.to_path
+    let to = env.temporary_directory.join('idoc-test-copy-files')
+    let _ = to.create_directory_all
+
+    t.true(fs.copy_files(from, to).ok?)
+    t.true(to.join('source.inko').file?)
+
+    let _ = to.remove_directory_all
+  })
+}

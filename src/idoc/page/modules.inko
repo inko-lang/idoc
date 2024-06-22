@@ -1,0 +1,90 @@
+import builder.html
+import idoc.html (
+  container, head, header, page_title, search_results, sidebar,
+  with_table_of_contents,
+)
+import idoc.ir
+import idoc.markdown (Markdown)
+import idoc.module_name (ModuleName)
+import idoc.url (relative_url)
+import std.fs.path (Path)
+import wobsite (Files, UpdateAssetLinks)
+import wobsite.markdown (SyntaxHighlight)
+import wobsite.url (file_url)
+
+let TITLE = 'Documentation'
+
+class Module {
+  let @name: ModuleName
+  let @summary: Markdown
+
+  fn static new(name: ModuleName, summary: Markdown) -> Module {
+    Module(name: name, summary: summary)
+  }
+
+  fn to_html -> html.Document {
+    @summary.to_html(increment_headings: 0)
+  }
+}
+
+class Page {
+  let @directory: Path
+  let @modules: Array[Module]
+
+  fn static new(directory: Path, modules: Array[Module]) -> Page {
+    modules.sort_by(fn (a, b) { a.name.cmp(b.name) })
+    Page(directory: directory, modules: modules)
+  }
+
+  fn to_html(files: ref Files) -> Result[String, String] {
+    let meta = try ir.Metadata.parse(@directory).map_error(fn (e) {
+      'failed to parse the documentation metadata: ${e}'
+    })
+    let current_url = file_url(files.source, files.source.join('index.md'))
+    let links = @modules.iter.map(fn (m) { m.name.clone }).to_array
+    let result = html.Document.html('en', fn (html) {
+      html.add(head(current_url, title: TITLE))
+
+      html.body.with(fn (body) {
+        header(body, current_url)
+
+        container(body, fn (div) {
+          sidebar(div, current_url, current_url, links)
+          search_results(div)
+
+          with_table_of_contents(div, fn (content) {
+            content.header.with(fn (h) {
+              page_title(h, fn (t) { t.text(TITLE) })
+            })
+
+            if meta.readme.empty? {
+              content.p.attr('class', 'no-data').text(
+                'No additional documentation is provided.',
+              )
+            } else {
+              content.append(meta.readme.to_html(increment_headings: 1))
+            }
+
+            content.h2.text('Modules')
+            content.table.attr('class', 'symbols').tbody.with(fn (tbody) {
+              @modules.iter.each(fn (mod) {
+                tbody.tr.with(fn (tr) {
+                  tr.td.with(fn (td) {
+                    let url = relative_url(from: current_url, to: mod.name.link)
+
+                    td.a.attr('href', url).text(mod.name.name)
+                  })
+
+                  tr.td.append(mod.to_html)
+                })
+              })
+            })
+          })
+        })
+      })
+    })
+
+    UpdateAssetLinks.new(files, current_url).run(result)
+    Result.Ok(result.to_string)
+  }
+}

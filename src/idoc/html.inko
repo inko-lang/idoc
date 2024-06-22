@@ -1,0 +1,310 @@
+# Types and methods for rendering HTML.
+import builder.html (Document, Element, Node)
+import idoc.ir
+import idoc.module_name (ModuleName)
+import idoc.url (relative_url)
+import markdown.html (TableOfContents)
+import std.time (DateTime)
+import syntax.format (Html as HtmlFormatter)
+import syntax.lexer.inko (Lexer)
+
+fn extract_table_of_contents(document: mut Document) -> Option[Node] {
+  match document.nodes.last {
+    case Some(Element({ @name = 'ul', @attributes = attr })) -> {
+      match attr.opt('class') {
+        case Some('toc') -> document.nodes.pop
+        case _ -> Option.None
+      }
+    }
+    case _ -> Option.None
+  }
+}
+
+fn adjust_headings(document: mut Document, add: Int) {
+  let h = 104
+  let zero = 48
+  let one = 49
+  let six = 54
+
+  document.nodes.iter_mut.each(fn (node) {
+    let el = match node {
+      case Element(el) if el.name.size == 2 and el.name.byte(0) == h -> el
+      case _ -> return
+    }
+
+    let num = el.name.byte(1)
+
+    if num >= one and num <= six { el.name = 'h${num - zero + add}' }
+  })
+}
+
+fn link_to(root: mut Element, from: String, to: String, text: String) {
+  root.a.attr('href', relative_url(from, to)).text(text)
+}
+
+fn link(href: String, rel: String) -> Element {
+  let el = Element.new('link')
+
+  el.attr('rel', rel).attr('href', href)
+  el
+}
+
+fn head(page: String, title: String) -> Element {
+  let head = Element.new('head')
+
+  head.attr('data-to-root', relative_url(page, '/'))
+
+  # The search data can get pretty big so we want to cache it. Since the file is
+  # generated dynamically, we can't use inko-wobsite's asset hashing feature,
+  # nor can we generate a custom hash due to the parallel nature of
+  # inko-wobsite; at least not without complicating the code and pushing too
+  # much work onto the main process. Instead, we just use the current time based
+  # on the assumption that if the code changes it's probably fine to also flush
+  # the search cache.
+  head.attr(
+    'data-search',
+    relative_url(page, '/search.json') + '?t=${DateTime.new.to_int}',
+  )
+
+  head
+    .meta
+    .attr(
+      'content',
+      "default-src 'self'; script-src 'self'; object-src 'none'; "
+        + "style-src 'self'; font-src 'self' data:; base-uri 'none'; "
+        + "form-action 'none';",
+    )
+    .attr('http-equiv', 'Content-Security-Policy')
+
+  head.meta.attr('charset', 'utf-8')
+
+  head.meta.attr('name', 'viewport').attr(
+    'content',
+    'width=device-width, initial-scale=1.0',
+  )
+
+  head
+    .link
+    .attr('rel', 'icon')
+    .attr('href', relative_url(page, '/favicon.ico'))
+    .attr('type', 'image/x-icon')
+
+  head.script.attr('src', relative_url(page, '/js/main.js')).attr(
+    'defer',
+    'defer',
+  )
+
+  head.add(link(relative_url(page, to: '/css/reset.css'), rel: 'stylesheet'))
+  head.add(link(relative_url(page, to: '/css/main.css'), rel: 'stylesheet'))
+  head.title.text(title)
+  head
+}
+
+fn header(root: mut Element, page: String) {
+  root.div.attr('id', 'top-bar').header.attr('class', 'grid').with(fn (h) {
+    h.div.attr('id', 'logo').with(fn (logo) {
+      logo.a.attr('href', relative_url(page, to: '/')).with(fn (a) {
+        a
+          .img
+          .attr('src', relative_url(page, to: '/favicon.ico'))
+          .attr('height', '24')
+          .attr('width', '24')
+
+        a.span.text('Documentation')
+      })
+    })
+
+    h.div.attr('id', 'expand-menus').with(fn (div) {
+      div
+        .a
+        .attr('data-toggle-text', 'Hide modules')
+        .attr('data-toggle', '#left')
+        .text('Show modules')
+    })
+
+    h.form.attr('id', 'search').with(fn (search) {
+      search
+        .input
+        .attr('id', 'search-input')
+        .attr('type', 'text')
+        .attr('placeholder', 'Search query')
+        .attr('autocomplete', 'off')
+      search.input.attr('type', 'reset').attr('id', 'clear-search').attr(
+        'value',
+        'clear',
+      )
+    })
+  })
+}
+
+fn container(body: mut Element, func: fn (mut Element)) {
+  body.div.attr('id', 'page').div.attr('class', 'grid').with(func)
+}
+
+fn sidebar(
+  root: mut Element,
+  module: String,
+  current: String,
+  links: ref Array[ModuleName],
+) {
+  let left = root.aside.attr('id', 'left')
+
+  left.header.h1.text('Modules')
+  left.ul.with(fn (ul) {
+    links.iter.each(fn (link) {
+      let a = ul.li.a
+
+      if module == link.link { a.attr('class', 'current') }
+
+      a.attr('href', relative_url(current, to: link.link)).text(link.name)
+    })
+  })
+}
+
+fn search_results(root: mut Element) {
+  root.article.attr('id', 'search-results').with(fn (article) {
+    article.header.h1.text('Search results')
+    article.p.attr('class', 'no-results hide').text('There are no results.')
+    article.table.attr('class', 'symbols').tbody
+  })
+}
+
+fn label(root: mut Element, text: String, title: String, color: String) {
+  root.span.attr('class', 'label ${color}').attr('title', title).text(text)
+}
+
+fn private(root: mut Element) {
+  label(root, 'Private', title: 'This symbol is private', color: 'red')
+}
+
+fn atomic(root: mut Element) {
+  label(
+    root,
+    'Atomic',
+    title: 'This type uses atomic reference counting',
+    color: 'blue',
+  )
+}
+
+fn value_type(root: mut Element) {
+  label(root, 'Value', title: 'This type is a value type', color: 'blue')
+}
+
+fn highlight_inko(bytes: ref ByteArray) -> Document {
+  HtmlFormatter.new.format(Lexer.new(bytes))
+}
+
+fn content(document: mut Document, body: fn (mut Element)) {
+  document.article.attr('id', 'content').with(fn move (content) {
+    body.call(content)
+  })
+
+  document.div.attr('class', 'toc')
+}
+
+fn page_title(root: mut Element, body: fn (mut Element)) {
+  root.h1.span.attr('class', 'toc-ignore').with(body)
+}
+
+fn symbol_info(root: mut Element, body: fn (mut Element)) {
+  root.div.attr('class', 'symbol-info').with(body)
+}
+
+fn with_table_of_contents(root: mut Element, body: fn (mut Element)) {
+  let tmp = Document.new
+
+  content(tmp, body)
+
+  let toc_gen = TableOfContents.new
+
+  toc_gen.maximum = 3
+  toc_gen.run(tmp)
+
+  let toc = extract_table_of_contents(tmp)
+
+  root.append(tmp)
+
+  match toc {
+    case Some(v) -> {
+      let div = root.aside.attr('id', 'right')
+
+      div.header.h1.text('Table of contents')
+      div.nodes.push(v)
+    }
+    case _ -> {}
+  }
+}
+
+fn type_signature(root: mut Element, signature: String) {
+  root.div.attr('class', 'symbol-type').append(
+    highlight_inko(signature.to_byte_array),
+  )
+}
+
+fn source_block(root: mut Element, source: ref ByteArray, signature: String) {
+  root.details.attr('class', 'source').with(fn (details) {
+    details.summary.with(fn (s) {
+      s.div.attr('class', 'show').text('Show source code')
+      s.div.attr('class', 'hide').text('Hide source code')
+    })
+    details.append(highlight_inko(source))
+  })
+
+  type_signature(root, signature)
+}
+
+fn methods(root: mut Element, methods: ref Array[ir.MethodWithSource]) {
+  methods.iter.each(fn (method) {
+    root.header.with(fn (h) {
+      h.h3.attr('id', 'method.${method.node.name}').text(method.node.name)
+
+      if method.node.public.false? { private(h) }
+    })
+
+    symbol_info(root, fn (c) {
+      source_block(c, method.source, signature: method.node.type)
+      c.append(method.documentation)
+    })
+  })
+}
+
+fn implementations(
+  root: mut Element,
+  current_url: String,
+  modules: ref Array[ModuleName],
+  implementations: ref Array[ir.Implementation],
+) {
+  let mods_map = Map.new
+
+  modules.iter.each(fn (m) { mods_map.set(m.name, m) })
+  implementations.iter.each(fn (imp) {
+    root.header.with(fn (h) {
+      # The module name is displayed outside of the heading (but with the same
+      # style) such that it isn't included in the table of contents, which would
+      # be too noisy and redundant.
+      match mods_map.opt(imp.module) {
+        case Some(target) -> {
+          h.span.attr('class', 'module-name').with(fn (span) {
+            link_to(span, current_url, target.link, text: '${imp.module}')
+            span.text('.')
+          })
+
+          link_to(
+            h.h3,
+            current_url,
+            target.symbol_link(imp.name),
+            text: imp.name,
+          )
+        }
+        case _ -> {
+          h.span.attr('class', 'module-name').text('${imp.module}.')
+          h.h3.text(imp.name)
+        }
+      }
+
+      if imp.public.false? { private(h) }
+    })
+
+    symbol_info(root, fn (c) { type_signature(c, imp.type) })
+  })
+}

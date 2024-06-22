@@ -1,0 +1,16 @@
+import idoc.url (relative_url)
+import std.test (Tests)
+
+fn pub tests(t: mut Tests) {
+  t.test('relative_url', fn (t) {
+    t.equal(relative_url(from: '/', to: '/css/main.css'), 'css/main.css')
+    t.equal(relative_url(from: '/', to: 'test.md'), 'test.md')
+    t.equal(relative_url(from: '/', to: 'foo/test.md'), 'foo/test.md')
+    t.equal(relative_url(from: '/foo/', to: '/css/main.css'), '../css/main.css')
+    t.equal(relative_url(from: '/foo', to: '/css/main.css'), '../css/main.css')
+    t.equal(relative_url(from: '/foo', to: 'test.md'), '../test.md')
+    t.equal(relative_url(from: '/foo/bar', to: 'test.md'), '../test.md')
+    t.equal(relative_url(from: '/foo/bar', to: '../test.md'), '../../test.md')
+    t.equal(relative_url(from: '/foo/bar', to: 'foo'), '../foo')
+  })
+}

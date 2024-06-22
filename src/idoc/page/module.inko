@@ -1,0 +1,102 @@
+import builder.html
+import idoc.html (
+  atomic, container, head, header, page_title, private, search_results, sidebar,
+  value_type, with_table_of_contents,
+)
+import idoc.ir
+import idoc.markdown (Markdown)
+import idoc.module_name (ModuleName)
+import idoc.url (relative_url)
+import std.cmp (Compare, Ordering)
+import std.iter (Iter)
+import wobsite (Files, UpdateAssetLinks)
+import wobsite.markdown (SyntaxHighlight)
+import wobsite.url (file_url)
+
+class enum ValueSemantics {
+  case Regular
+  case Atomic
+  case Value
+}
+
+fn symbols[I: ir.Symbol](
+  root: mut html.Element,
+  module: ref ModuleName,
+  title: String,
+  symbols: ref Array[I],
+) {
+  if symbols.empty? { return }
+
+  root.h2.text(title)
+  root.table.attr('class', 'symbols').tbody.with(fn (tbody) {
+    symbols.iter.each(fn (s) {
+      tbody.tr.with(fn (tr) {
+        tr.td.attr('class', 'min').with(fn (td) {
+          if s.public?.false? { private(td) }
+
+          match s.value_semantics {
+            case Atomic -> atomic(td)
+            case Value -> value_type(td)
+            case _ -> {}
+          }
+        })
+
+        tr.td.with(fn (td) {
+          let from = module.link
+          let to = module.symbol_link(s.name)
+
+          td.a.attr('href', relative_url(from, to)).text(s.name)
+        })
+
+        tr.td.append(s.summary.to_html(increment_headings: 0))
+      })
+    })
+  })
+}
+
+class Page {
+  let @source: String
+  let @modules: Array[ModuleName]
+  let @module: ir.Module
+
+  fn static new(
+    source: String,
+    modules: Array[ModuleName],
+    module: ir.Module,
+  ) -> Page {
+    Page(source: source, modules: modules, module: module)
+  }
+
+  fn mut to_html(files: ref Files) -> String {
+    let mname = ModuleName.new(@module.name)
+    let current_url = file_url(files.source, files.source.join(@source))
+
+    let result = html.Document.html('en', fn (html) {
+      html.add(head(current_url, title: @module.name))
+
+      html.body.with(fn (body) {
+        header(body, current_url)
+
+        container(body, fn (div) {
+          sidebar(div, current_url, current_url, @modules)
+          search_results(div)
+
+          with_table_of_contents(div, fn (content) {
+            content.header.with(fn (h) {
+              page_title(h, fn (t) { t.text(@module.name) })
+            })
+
+            content.append(@module.documentation.to_html(increment_headings: 1))
+            symbols(content, mname, 'Constants', @module.constants)
+            symbols(content, mname, 'Methods', @module.methods)
+            symbols(content, mname, 'Traits', @module.traits)
+            symbols(content, mname, 'Classes', @module.classes)
+          })
+        })
+      })
+    })
+
+    UpdateAssetLinks.new(files, current_url).run(result)
+    result.to_string
+  }
+}

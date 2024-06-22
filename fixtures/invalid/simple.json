@@ -1,0 +1,15 @@
+{
+  "name": "std.foo",
+  "file": "src/std/foo.inko",
+  "documentation": "Example",
+  "constants": [
+    {
+      "name": "A",
+      "type": "Int",
+      "documentation": ""
+    }
+  ],
+  "methods": [],
+  "classes": [],
+  "traits": []
+}

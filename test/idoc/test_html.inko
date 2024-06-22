@@ -1,0 +1,30 @@
+import builder.html (Document)
+import idoc.html
+import std.test (Tests)
+
+fn pub tests(t: mut Tests) {
+  t.test('extract_table_of_contents', fn (t) {
+    let doc = Document.new
+
+    # This ensures the ref isn't around anymore when we drop the owned Node at
+    # the end of this test.
+    {
+      doc.ul.attr('class', 'toc')
+      nil
+    }
+
+    t.true(html.extract_table_of_contents(doc).some?)
+    t.true(doc.nodes.empty?)
+  })
+
+  t.test('adjust_headings', fn (t) {
+    let doc = Document.new
+    let h1 = doc.h1
+    let h2 = doc.h2
+
+    html.adjust_headings(doc, add: 1)
+
+    t.equal(h1.name, 'h2')
+    t.equal(h2.name, 'h3')
+  })
+}

@@ -1,0 +1,64 @@
+{
+  "name": "std.foo",
+  "file": "src/std/foo.inko",
+  "documentation": "Example",
+  "constants": [
+    {
+      "name": "A",
+      "location": {
+        "lines": { "start": 1, "end": 2 },
+        "columns": { "start": 1, "end": 2 }
+      },
+      "public": true,
+      "type": "Int",
+      "documentation": "Example"
+    }
+  ],
+  "methods": [
+    {
+      "name": "a",
+      "file": "foo.inko",
+      "location": {
+        "lines": { "start": 1, "end": 2 },
+        "columns": { "start": 1, "end": 2 }
+      },
+      "kind": 0,
+      "public": true,
+      "type": "fn a",
+      "documentation": "Example"
+    }
+  ],
+  "classes": [
+    {
+      "name": "A",
+      "location": {
+        "lines": { "start": 1, "end": 2 },
+        "columns": { "start": 1, "end": 2 }
+      },
+      "kind": 0,
+      "public": true,
+      "type": "class A",
+      "documentation": "Example",
+      "constructors": [],
+      "fields": [],
+      "static_methods": [],
+      "instance_methods": [],
+      "implemented_traits": []
+    }
+  ],
+  "traits": [
+    {
+      "name": "A",
+      "location": {
+        "lines": { "start": 1, "end": 2 },
+        "columns": { "start": 1, "end": 2 }
+      },
+      "public": true,
+      "type": "class A",
+      "documentation": "Example",
+      "default_methods": [],
+      "required_methods": [],
+      "implementations": []
+    }
+  ]
+}

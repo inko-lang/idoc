@@ -1,0 +1,71 @@
+import builder.html
+import idoc.fs (read_source_code)
+import idoc.html (
+  container, head, header, highlight_inko, link_to, page_title, private,
+  search_results, sidebar, source_block, symbol_info, with_table_of_contents,
+)
+import idoc.ir (Method)
+import idoc.module_name (ModuleName)
+import std.fs.path (Path)
+import wobsite (Files, UpdateAssetLinks)
+import wobsite.url (file_url)
+
+class Page {
+  let @module: ModuleName
+  let @source: String
+  let @method: Method
+  let @modules: Array[ModuleName]
+
+  fn static new(
+    module: ModuleName,
+    method: Method,
+    modules: Array[ModuleName],
+  ) -> Page {
+    let src = module.symbol_source_uri(method.name)
+
+    Page(module: module, source: src, method: method, modules: modules)
+  }
+
+  fn source_code -> Result[ByteArray, String] {
+    read_source_code(@method.file, @method.location.lines, dedent: 0)
+  }
+
+  fn documentation_html -> html.Document {
+    @method.documentation.to_html(increment_headings: 1)
+  }
+
+  fn to_html(files: ref Files) -> Result[String, String] {
+    let source = try source_code
+    let current_url = file_url(files.source, files.source.join(@source))
+    let result = html.Document.html('en', fn (h) {
+      h.add(head(current_url, title: '${@module.name}.${@method.name}'))
+
+      h.body.with(fn (body) {
+        header(body, current_url)
+
+        container(body, fn (div) {
+          sidebar(div, @module.uri, current_url, @modules)
+          search_results(div)
+
+          with_table_of_contents(div, fn (content) {
+            content.header.with(fn (h) {
+              page_title(h, fn (t) {
+                link_to(t, current_url, @module.link, text: @module.name)
+                t.text('.')
+                t.text(@method.name)
+              })
+
+              if @method.public.false? { private(h) }
+            })
+
+            source_block(content, source, signature: @method.type)
+            content.append(documentation_html)
+          })
+        })
+      })
+    })
+
+    UpdateAssetLinks.new(files, current_url).run(result)
+    Result.Ok(result.to_string)
+  }
+}

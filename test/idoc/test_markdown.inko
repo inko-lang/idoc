@@ -1,0 +1,53 @@
+import idoc.markdown (Markdown)
+import markdown
+import std.json (Json, PullParser)
+import std.test (Tests)
+
+fn parse(string: String) -> Markdown {
+  Markdown.parse(PullParser.new(Json.String(string).to_string)).get
+}
+
+fn pub tests(t: mut Tests) {
+  t.ok('Markdown.parse', fn (t) {
+    let parser = PullParser.new('"hello **world**"')
+    let md = try Markdown.parse(parser)
+
+    t.equal(
+      md.to_html(increment_headings: 0).to_string,
+      '<p>hello <strong>world</strong></p>',
+    )
+    Result.Ok(nil)
+  })
+
+  t.test('Markdown.empty?', fn (t) {
+    let doc1 = Markdown.new
+    let doc2 = parse('foo')
+
+    doc2.inner.children.push(markdown.Node.Text('foo'))
+
+    t.true(doc1.empty?)
+    t.false(doc2.empty?)
+  })
+
+  t.test('Markdown.to_html', fn (t) {
+    let doc1 = parse('# test')
+    let doc2 = parse('```inko\n10\n```')
+
+    t.equal(doc1.to_html(increment_headings: 0).to_string, '<h1>test</h1>')
+    t.equal(doc1.to_html(increment_headings: 1).to_string, '<h2>test</h2>')
+    t.true(doc2.to_html(increment_headings: 0).to_string.contains?('highlight'))
+  })
+
+  t.test('Markdown.summary', fn (t) {
+    let doc = parse('foo\n\nbar')
+
+    t.equal(doc.summary.to_html(increment_headings: 0).to_string, '<p>foo</p>')
+  })
+
+  t.test('Markdown.clone', fn (t) {
+    let doc1 = parse('foo')
+    let doc2 = doc1.clone
+
+    t.equal(doc1.inner.children, doc2.inner.children)
+  })
+}

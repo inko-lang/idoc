@@ -1,4 +1,4 @@
-import idoc.cmd.main (run)
+import idoc.cmd (run)
 import std.env (arguments, working_directory)
 import std.io (Write)
 import std.stdio (STDERR, STDOUT)

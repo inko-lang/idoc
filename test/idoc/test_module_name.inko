@@ -1,0 +1,80 @@
+import idoc.ir (Module)
+import idoc.markdown (Markdown)
+import idoc.module_name (ModuleName)
+import std.test (Tests)
+
+fn pub tests(t: mut Tests) {
+  t.test('ModuleName.array_of', fn (t) {
+    let mod1 = recover {
+      Module(
+        name: 'std.foo',
+        file: 'a'.to_path,
+        documentation: Markdown.new,
+        constants: [],
+        methods: [],
+        classes: [],
+        traits: [],
+      )
+    }
+    let mod2 = recover {
+      Module(
+        name: 'std.bar',
+        file: 'a'.to_path,
+        documentation: Markdown.new,
+        constants: [],
+        methods: [],
+        classes: [],
+        traits: [],
+      )
+    }
+    let names = ModuleName.array_of([mod1, mod2])
+
+    t.equal(names.get(0).name, 'std.bar')
+    t.equal(names.get(0).uri, 'module/std/bar/')
+    t.equal(names.get(1).name, 'std.foo')
+    t.equal(names.get(1).uri, 'module/std/foo/')
+  })
+
+  t.test('ModuleName.new', fn (t) {
+    let name = ModuleName.new('std.foo.bar')
+
+    t.equal(name.name, 'std.foo.bar')
+    t.equal(name.uri, 'module/std/foo/bar/')
+  })
+
+  t.test('ModuleName.symbol_html_uri', fn (t) {
+    let name = ModuleName.new('std.foo')
+
+    t.equal(name.symbol_html_uri('Foo'), 'module/std/foo/Foo/index.html')
+  })
+
+  t.test('ModuleName.symbol_source_uri', fn (t) {
+    let name = ModuleName.new('std.foo')
+
+    t.equal(name.symbol_source_uri('Foo'), 'module/std/foo/Foo/index.md')
+  })
+
+  t.test('ModuleName.source_uri', fn (t) {
+    let name = ModuleName.new('std.foo')
+
+    t.equal(name.source_uri, 'module/std/foo/index.md')
+  })
+
+  t.test('ModuleName.html_uri', fn (t) {
+    let name = ModuleName.new('std.foo')
+
+    t.equal(name.html_uri, 'module/std/foo/index.html')
+  })
+
+  t.test('ModuleName.symbol_link', fn (t) {
+    let name = ModuleName.new('std.foo')
+
+    t.equal(name.symbol_link('A'), '/module/std/foo/A')
+  })
+
+  t.test('ModuleName.link', fn (t) {
+    let name = ModuleName.new('std.foo')
+
+    t.equal(name.link, '/module/std/foo/')
+  })
+}

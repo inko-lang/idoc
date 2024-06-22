@@ -1,0 +1,167 @@
+import idoc.fs (copy_files)
+import idoc.ir
+import idoc.module_name (ModuleName)
+import idoc.page.class (self as cls)
+import idoc.page.constant
+import idoc.page.method
+import idoc.page.module
+import idoc.page.modules (self as mods)
+import idoc.page.search
+import idoc.page.trait (self as trt)
+import std.fs.path (Path)
+import std.io (Write)
+import std.optparse (Help, Options)
+import wobsite (Site)
+
+let VERSION = '0.1.0'
+
+# The default directory in which to look for the output of `inko doc`.
+#
+# We default to this directory such that in most cases one can simply run
+# `inko doc` followed by `idoc html`, instead of having to run
+# `idoc html build/docs`.
+let DEFAULT_DIR = 'build/docs'
+
+# The directory to store the output in.
+let OUTPUT_DIR = 'build/idoc'
+
+# The path to the directory containing the assets to use.
+#
+# This constant is public such that its path can be overwritten at compile-time
+# (e.g. by setting it to `/usr/share/idoc/assets`).
+let pub ASSETS = 'assets'
+
+fn usage(options: ref Options, output: mut Write) {
+  let help = Help
+    .new('idoc')
+    .usage('[OPTIONS] [DIR]')
+    .description(
+      'Generate a static website from Inko JSON documentation files.',
+    )
+    .section('Arguments')
+    .line('This is a test')
+    .section('Options')
+    .options(options)
+    .to_string
+
+  let _ = output.write_string(help)
+}
+
+fn pub run(
+  arguments: Array[String],
+  working_directory: ref Path,
+  output: mut Write,
+) -> Result[Nil, String] {
+  let opts = Options.new
+
+  opts.stop_at_first_non_option = true
+  opts.flag('h', 'help', 'Show this help message')
+  opts.flag('v', 'version', 'Show the version')
+
+  let matches = try opts.parse(arguments).map_error(fn (e) { e.to_string })
+
+  if matches.contains?('help') or matches.remaining.empty? {
+    usage(opts, output)
+    return Result.Ok(nil)
+  }
+
+  if matches.contains?('version') {
+    let _ = output.print('idoc ${VERSION}')
+
+    return Result.Ok(nil)
+  }
+
+  let input = matches.remaining.opt(0).or(DEFAULT_DIR).to_path
+
+  if input.directory?.false? { throw "the directory '${input}' doesn't exist" }
+
+  let build = OUTPUT_DIR.to_path
+  let source = build.join('source')
+
+  # Make sure we always start with a clean directory, instead of keeping files
+  # from previous builds around.
+  let _ = build.remove_directory_all
+
+  try source.create_directory_all.map_error(fn (e) {
+    'failed to create ${source}: ${e}'
+  })
+
+  let assets = ASSETS.to_path
+
+  try copy_files(from: assets, to: source).map_error(fn (e) {
+    'failed to copy the assets from ${assets} to ${source}: ${e}'
+  })
+
+  let site = try Site.new(source, build.join('public')).map_error(fn (e) {
+    'failed to set up the site generator: ${e}'
+  })
+
+  let modules = try ir.Module.parse_all(input)
+  let sidebar = ModuleName.array_of(modules)
+  let search_page = recover search.Page.new
+  let mod_summaries = recover []
+  let mods_iter = modules.into_iter
+
+  loop {
+    let mod = match mods_iter.next {
+      case Some(v) -> v
+      case _ -> break
+    }
+
+    search_page.add_symbols(search.Symbol.array_for(mod))
+
+    let mod_name = ModuleName.new(mod.name)
+    let file = mod.file.clone
+
+    mod_summaries.push(
+      recover mods.Module.new(mod_name.clone, mod.documentation.summary),
+    )
+
+    mod.unique_constants.into_iter.each(fn (c) {
+      let html = mod_name.symbol_html_uri(c.name)
+      let page = recover {
+        constant.Page.new(mod_name.clone, file.clone, c, sidebar.clone)
+      }
+
+      site.generate(html, fn move (f) { page.to_html(f) })
+    })
+
+    mod.unique_methods.into_iter.each(fn (m) {
+      let html = mod_name.symbol_html_uri(m.name)
+      let page = recover method.Page.new(mod_name.clone, m, sidebar.clone)
+
+      site.generate(html, fn move (f) { page.to_html(f) })
+    })
+
+    mod.unique_classes.into_iter.each(fn (c) {
+      let html = mod_name.symbol_html_uri(c.name)
+      let page = recover cls.Page.new(mod_name.clone, c, sidebar.clone)
+
+      site.generate(html, fn move (f) { page.to_html(f) })
+    })
+
+    mod.unique_traits.into_iter.each(fn (c) {
+      let html = mod_name.symbol_html_uri(c.name)
+      let page = recover trt.Page.new(mod_name.clone, c, sidebar.clone)
+
+      site.generate(html, fn move (f) { page.to_html(f) })
+    })
+
+    let page = recover module.Page.new(mod_name.source_uri, sidebar.clone, mod)
+
+    site.generate(mod_name.html_uri, fn move (f) { Result.Ok(page.to_html(f)) })
+  }
+
+  let index = recover mods.Page.new(input.clone, mod_summaries)
+
+  site.generate('index.html', fn move (f) { index.to_html(f) })
+  site.generate('search.json', fn move (f) { Result.Ok(search_page.to_json(f)) })
+  site.copy('*.css')
+  site.copy('*.js')
+  site.copy('*.ico')
+
+  match site.wait {
+    case Ok(_) -> Result.Ok(nil)
+    case Error(e) -> Result.Error('failed to build the documentation: ${e}')
+  }
+}

@@ -1,0 +1,62 @@
+import std.cmp (min)
+import std.fs.file (ReadOnlyFile)
+import std.fs.path (Path)
+import std.io (BufferedReader, Error)
+import std.range (InclusiveRange)
+
+let SPACE = 32
+let TAB = 9
+
+fn read_source_code(
+  path: ref Path,
+  lines: ref InclusiveRange,
+  dedent: Int,
+) -> Result[ByteArray, String] {
+  let reader = try ReadOnlyFile
+    .new(path.clone)
+    .map(fn (f) { BufferedReader.new(f) })
+    .map_error(fn (e) { 'failed to read ${path}: ${e}' })
+
+  let mut lnum = 1
+  let bytes = ByteArray.new
+  let line = ByteArray.new
+
+  while reader.read_line(line).or(0) > 0 {
+    if lnum < lines.start {
+      lnum += 1
+    } else if lnum <= lines.end {
+      let ws = line.iter.take_while(fn (b) { b == SPACE or b == TAB }).count
+
+      lnum += 1
+      bytes.copy_from(line, at: min(dedent, ws), size: line.size)
+    } else {
+      if bytes.last.or(-1) == 10 { bytes.pop }
+
+      break
+    }
+
+    line.clear
+  }
+
+  Result.Ok(bytes)
+}
+
+fn copy_files(from: ref Path, to: ref Path) -> Result[Nil, Error] {
+  let iter = try from.list_all
+
+  iter.try_each(fn (res) {
+    match res {
+      case Ok({ @path = p, @type = File }) -> {
+        let to = to.join(p.strip_prefix(from).get)
+
+        # If the directory already exists we just ignore the error. This removes
+        # the need for an extra stat() call.
+        let _ = to.directory.create_directory
+
+        p.copy(to).map(fn (_) { nil })
+      }
+      case Ok(_) -> Result.Ok(nil)
+      case Error(e) -> Result.Error(e)
+    }
+  })
+}

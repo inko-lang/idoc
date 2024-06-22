@@ -1,0 +1,258 @@
+import builder.html
+import idoc.ir
+import idoc.markdown (Markdown)
+import idoc.module_name (ModuleName)
+import std.cmp (Compare, Ordering)
+import std.int (ToInt)
+import std.json (Json)
+import wobsite (Files)
+import wobsite.markdown (SyntaxHighlight)
+
+class enum Kind {
+  case Module
+  case Constant
+  case Class
+  case Trait
+  case ModuleMethod
+  case Method
+  case Field
+  case Constructor
+}
+
+impl ToInt for Kind {
+  fn pub to_int -> Int {
+    match self {
+      case Module -> 0
+      case Constant -> 1
+      case Class -> 2
+      case Trait -> 3
+      case ModuleMethod or Method -> 4
+      case Field -> 5
+      case Constructor -> 6
+    }
+  }
+}
+
+class Symbol {
+  let @kind: Kind
+  let @scope: String
+  let @name: String
+  let @link: String
+  let @summary: Markdown
+
+  fn static array_for(module: ref ir.Module) -> uni Array[Symbol] {
+    let mut symbols = recover []
+    let mname = ModuleName.new(module.name)
+
+    symbols.push(
+      recover {
+        Symbol(
+          kind: Kind.Module,
+          scope: '',
+          name: mname.name,
+          link: mname.link,
+          summary: module.documentation.summary,
+        )
+      },
+    )
+
+    # Since non-moving closures can't capture `uni` values, we need to use
+    # `reduce` here and update the `symbols` assignment every time.
+    symbols = module.constants.iter.reduce(symbols, fn (symbols, s) {
+      symbols.push(
+        recover {
+          Symbol(
+            kind: Kind.Constant,
+            scope: mname.name,
+            name: s.name,
+            link: mname.symbol_link(s.name),
+            summary: s.documentation.summary,
+          )
+        },
+      )
+      symbols
+    })
+
+    symbols = module.methods.iter.reduce(symbols, fn (symbols, s) {
+      symbols.push(
+        recover {
+          Symbol(
+            kind: Kind.ModuleMethod,
+            scope: mname.name,
+            name: s.name,
+            link: mname.symbol_link(s.name),
+            summary: s.documentation.summary,
+          )
+        },
+      )
+      symbols
+    })
+
+    symbols = module.classes.iter.reduce(symbols, fn (symbols, c) {
+      symbols.push(
+        recover {
+          Symbol(
+            kind: Kind.Class,
+            scope: mname.name,
+            name: c.name,
+            link: mname.symbol_link(c.name),
+            summary: c.documentation.summary,
+          )
+        },
+      )
+
+      let mut symbols = c.constructors.iter.reduce(symbols, fn (symbols, s) {
+        symbols.push(
+          recover {
+            Symbol(
+              kind: Kind.Constructor,
+              scope: '${mname.name}.${c.name}',
+              name: s.name,
+              link: mname.symbol_link(c.name) + '#constructor.${s.name}',
+              summary: s.documentation.summary,
+            )
+          },
+        )
+        symbols
+      })
+
+      symbols = c.fields.iter.reduce(symbols, fn (symbols, s) {
+        symbols.push(
+          recover {
+            Symbol(
+              kind: Kind.Field,
+              scope: '${mname.name}.${c.name}',
+              name: s.name,
+              link: mname.symbol_link(c.name) + '#field.${s.name}',
+              summary: s.documentation.summary,
+            )
+          },
+        )
+        symbols
+      })
+
+      symbols = c.static_methods.iter.reduce(symbols, fn (symbols, s) {
+        symbols.push(
+          recover {
+            Symbol(
+              kind: Kind.Method,
+              scope: '${mname.name}.${c.name}',
+              name: s.name,
+              link: mname.symbol_link(c.name) + '#method.${s.name}',
+              summary: s.documentation.summary,
+            )
+          },
+        )
+        symbols
+      })
+
+      symbols = c.instance_methods.iter.reduce(symbols, fn (symbols, s) {
+        symbols.push(
+          recover {
+            Symbol(
+              kind: Kind.Method,
+              scope: '${mname.name}.${c.name}',
+              name: s.name,
+              link: mname.symbol_link(c.name) + '#method.${s.name}',
+              summary: s.documentation.summary,
+            )
+          },
+        )
+        symbols
+      })
+      symbols
+    })
+
+    symbols = module.traits.iter.reduce(symbols, fn (symbols, t) {
+      symbols.push(
+        recover {
+          Symbol(
+            kind: Kind.Trait,
+            scope: mname.name,
+            name: t.name,
+            link: mname.symbol_link(t.name),
+            summary: t.documentation.summary,
+          )
+        },
+      )
+
+      let mut symbols = t.required_methods.iter.reduce(
+        symbols,
+        fn (symbols, s) {
+          symbols.push(
+            recover {
+              Symbol(
+                kind: Kind.Method,
+                scope: '${mname.name}.${t.name}',
+                name: s.name,
+                link: mname.symbol_link(t.name) + '#method.${s.name}',
+                summary: s.documentation.summary,
+              )
+            },
+          )
+          symbols
+        },
+      )
+
+      symbols = t.default_methods.iter.reduce(symbols, fn (symbols, s) {
+        symbols.push(
+          recover {
+            Symbol(
+              kind: Kind.Method,
+              scope: '${mname.name}.${t.name}',
+              name: s.name,
+              link: mname.symbol_link(t.name) + '#method.${s.name}',
+              summary: s.documentation.summary,
+            )
+          },
+        )
+        symbols
+      })
+      symbols
+    })
+
+    symbols
+  }
+
+  fn summary_html -> html.Document {
+    @summary.to_html(increment_headings: 0)
+  }
+}
+
+impl Compare[Symbol] for Symbol {
+  fn pub cmp(other: ref Symbol) -> Ordering {
+    match @scope.cmp(other.scope) {
+      case Equal -> @name.cmp(other.name)
+      case ord -> ord
+    }
+  }
+}
+
+class Page {
+  let @symbols: Array[Symbol]
+
+  fn static new -> Page {
+    Page([])
+  }
+
+  fn mut add_symbols(symbols: uni Array[Symbol]) {
+    @symbols.append(symbols)
+  }
+
+  fn mut to_json(files: ref Files) -> String {
+    let vals = []
+
+    @symbols.sort
+    @symbols.iter.each(fn (sym) {
+      let obj = Map.new
+
+      obj.set('kind', Json.Int(sym.kind.to_int))
+      obj.set('scope', Json.String(sym.scope))
+      obj.set('name', Json.String(sym.name))
+      obj.set('link', Json.String(sym.link))
+      obj.set('desc', Json.String(sym.summary_html.to_string))
+      vals.push(Json.Object(obj))
+    })
+    Json.Array(vals).to_string
+  }
+}
