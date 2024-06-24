@@ -60,7 +60,7 @@ fn pub run(
 
   let matches = try opts.parse(arguments).map_error(fn (e) { e.to_string })
 
-  if matches.contains?('help') or matches.remaining.empty? {
+  if matches.contains?('help') {
     usage(opts, output)
     return Result.Ok(nil)
   }
