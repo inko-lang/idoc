@@ -1,6 +1,10 @@
 .check-version:
 	@test $${VERSION?The VERSION variable must be set}
 
+build:
+	inko pkg sync
+	inko build -o ./build/idoc
+
 release/version: .check-version
 	sed -E -i -e "s/^let VERSION = '([^']+)'$$/let VERSION = '${VERSION}'/" \
 		src/idoc/cmd.inko
@@ -19,4 +23,5 @@ release/tag: .check-version
 
 release: release/version release/changelog release/commit release/tag
 
+.PHONY: build
 .PHONY: release/version release/changelog release/commit release/tag release
