@@ -49,7 +49,7 @@ jobs:
     needs:
       - test
       - fmt
-    if: github.ref_name == 'main'
+    if: github.ref_name == 'main' || github.ref_type == 'tag'
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v2
