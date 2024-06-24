@@ -1,9 +1,14 @@
+PREFIX := /usr
+
+# The directory to store shared files in (e.g. the assets directory).
+SHARE := ${PREFIX}/share/idoc
+
 .check-version:
 	@test $${VERSION?The VERSION variable must be set}
 
 build:
 	inko pkg sync
-	inko build -o ./build/idoc
+	inko build --define 'idoc.cmd.ASSETS=${SHARE}/assets' -o ./build/idoc
 
 release/version: .check-version
 	sed -E -i -e "s/^let VERSION = '([^']+)'$$/let VERSION = '${VERSION}'/" \
