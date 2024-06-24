@@ -11,16 +11,13 @@ import idoc.page.trait (self as trt)
 import std.fs.path (Path)
 import std.io (Write)
 import std.optparse (Help, Options)
+import std.sys (Command, Stream)
 import wobsite (Site)
 
 let VERSION = '0.1.0'
 
-# The default directory in which to look for the output of `inko doc`.
-#
-# We default to this directory such that in most cases one can simply run
-# `inko doc` followed by `idoc html`, instead of having to run
-# `idoc html build/docs`.
-let DEFAULT_DIR = 'build/docs'
+# The directory in which to look for the output of `inko doc`.
+let INPUT_DIR = 'build/docs'
 
 # The directory to store the output in.
 let OUTPUT_DIR = 'build/idoc'
@@ -34,17 +31,50 @@ let pub ASSETS = 'assets'
 fn usage(options: ref Options, output: mut Write) {
   let help = Help
     .new('idoc')
-    .usage('[OPTIONS] [DIR]')
+    .usage('[OPTIONS]')
     .description(
-      'Generate a static website from Inko JSON documentation files.',
+      'Generate documentation for the current project in the form of a static website.
+
+This command automatically invokes `inko doc` to generate the documentation JSON
+files used to generate the static website.
+
+Upon completion, the generated files are found in ./build/idoc/public/',
     )
-    .section('Arguments')
-    .line('This is a test')
+    .section('Examples')
+    .line(
+      'idoc                       # Generate documentation for the current project',
+    )
+    .line(
+      'idoc path/to/my/project    # Generate documentation for the project in path/to/my/project',
+    )
     .section('Options')
     .options(options)
     .to_string
 
   let _ = output.write_string(help)
+}
+
+fn generate_json(private: Bool, dependencies: Bool) -> Result[Nil, String] {
+  let cmd = Command.new('inko')
+
+  cmd.argument('doc')
+  cmd.stdin(Stream.Null)
+
+  if private { cmd.argument('--private') }
+
+  if dependencies { cmd.argument('--dependencies') }
+
+  let status = try cmd.spawn.then(fn (c) { c.wait }).map_error(fn (e) {
+    'failed to start `inko doc`: ${e}'
+  })
+
+  if status.success? {
+    Result.Ok(nil)
+  } else {
+    Result.Error(
+      'the `inko doc` command exited with status code ${status.to_int}',
+    )
+  }
 }
 
 fn pub run(
@@ -57,6 +87,8 @@ fn pub run(
   opts.stop_at_first_non_option = true
   opts.flag('h', 'help', 'Show this help message')
   opts.flag('v', 'version', 'Show the version')
+  opts.flag('p', 'private', 'Generate documentation for private symbols')
+  opts.flag('d', 'dependencies', 'Generate documentation for dependencies')
 
   let matches = try opts.parse(arguments).map_error(fn (e) { e.to_string })
 
@@ -71,10 +103,12 @@ fn pub run(
     return Result.Ok(nil)
   }
 
-  let input = matches.remaining.opt(0).or(DEFAULT_DIR).to_path
+  try generate_json(
+    matches.contains?('private'),
+    matches.contains?('dependencies'),
+  )
 
-  if input.directory?.false? { throw "the directory '${input}' doesn't exist" }
-
+  let input = INPUT_DIR.to_path
   let build = OUTPUT_DIR.to_path
   let source = build.join('source')
 
