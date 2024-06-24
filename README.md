@@ -5,9 +5,9 @@ Inko's documentation JSON files into a static website.
 
 ## Usage
 
-In the directory of you project, run `inko doc` to generate the documentation
-JSON files, followed by `idoc` to generate a static site. The resulting website
-is located at `./build/idoc/public`. For more information, run `idoc --help`.
+To generate documentation, run `idoc` in the root directory of your project (=
+the directory containing the `src/` directory). The resulting website is found
+at `./build/idoc/public`. For more information, run `idoc --help`.
 
 ## Requirements
 
