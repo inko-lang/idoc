@@ -17,8 +17,24 @@ is located at `./build/idoc/public`. For more information, run `idoc --help`.
 
 Building from source:
 
+```bash
+make build
 ```
-inko build -o build/idoc
+
+This assumes the assets used by the website (e.g. the CSS files) are located at
+`/usr/share/idoc/assets`. You can change this path by settings the `ASSETS` make
+variable. For example, to use the local `assets` directory you'd run the
+following:
+
+```bash
+make build ASSETS=$PWD/assets
+```
+
+You can also use the provided Docker image:
+
+```bash
+docker pull ghcr.io/inko-lang/idoc:latest
+docker run --rm --volume $PWD:$PWD:z --workdir $PWD idoc:latest
 ```
 
 ## License
