@@ -1,7 +1,9 @@
 PREFIX := /usr
+BINDIR := ${PREFIX}/bin
+DATADIR := ${PREFIX}/share
 
-# The directory to store the assets in.
-ASSETS := ${PREFIX}/share/idoc/assets
+# The directory to install the asset files (CSS, JS, etc) in.
+ASSETS := ${DATADIR}/idoc/assets
 
 .check-version:
 	@test $${VERSION?The VERSION variable must be set}
@@ -9,6 +11,19 @@ ASSETS := ${PREFIX}/share/idoc/assets
 build:
 	inko pkg sync
 	inko build --define 'idoc.cmd.ASSETS=${ASSETS}' -o ./build/idoc
+
+${DESTDIR}${BINDIR}/idoc:
+	install -D --mode=755 build/idoc "${@}"
+
+${DESTDIR}${ASSETS}:
+	mkdir -p "${@}"
+	cp --recursive assets/* "${@}"
+
+install: build ${DESTDIR}${BINDIR}/idoc ${DESTDIR}${ASSETS}
+
+uninstall:
+	rm --force ${BINDIR}/idoc
+	rm --recursive --force ${ASSETS}
 
 release/version: .check-version
 	sed -E -i -e "s/^let VERSION = '([^']+)'$$/let VERSION = '${VERSION}'/" \

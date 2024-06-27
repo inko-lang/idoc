@@ -18,23 +18,38 @@ at `./build/idoc/public`. For more information, run `idoc --help`.
 Building from source:
 
 ```bash
-make build
+make install PREFIX=~/.local
 ```
 
-This assumes the assets used by the website (e.g. the CSS files) are located at
-`/usr/share/idoc/assets`. You can change this path by settings the `ASSETS` make
-variable. For example, to use the local `assets` directory you'd run the
-following:
+This installs `idoc` into `~/.local`, with the executable being found at
+`~/.local/bin`, and the assets located at `~/.local/share/idoc/assets`. To
+uninstall, run the following:
+
+```bash
+make uninstall PREFIX=~/.local
+```
+
+For testing changes locally, run the following
 
 ```bash
 make build ASSETS=$PWD/assets
 ```
 
-You can also use the provided Docker image:
+This builds the executable such that it uses the `assets/` directory directly
+from the repository. In this case the executable is found at `./build/idoc`.
+
+You can also use the provided [Docker](https://www.docker.com/) image:
 
 ```bash
 docker pull ghcr.io/inko-lang/idoc:latest
 docker run --rm --volume $PWD:$PWD:z --workdir $PWD idoc:latest
+```
+
+Or when using [Podman](http://podman.io/):
+
+```bash
+podman pull ghcr.io/inko-lang/idoc:latest
+podman run --rm --volume $PWD:$PWD:z --workdir $PWD idoc:latest
 ```
 
 ## License
