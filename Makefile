@@ -12,14 +12,10 @@ build:
 	inko pkg sync
 	inko build --define "idoc.cmd.ASSETS=$$(realpath ${ASSETS})" -o ./build/idoc
 
-${DESTDIR}${BINDIR}/idoc:
-	install -D --mode=755 build/idoc "${@}"
-
-${DESTDIR}${ASSETS}:
-	mkdir -p "${@}"
-	cp --recursive assets/* "${@}"
-
-install: build ${DESTDIR}${BINDIR}/idoc ${DESTDIR}${ASSETS}
+install: build
+	install -D --mode=755 build/idoc ${DESTDIR}${BINDIR}/idoc
+	mkdir -p ${DESTDIR}${ASSETS}
+	cp --recursive assets/* ${DESTDIR}${ASSETS}
 
 uninstall:
 	rm --force ${BINDIR}/idoc
@@ -43,5 +39,5 @@ release/tag: .check-version
 
 release: release/version release/changelog release/commit release/tag
 
-.PHONY: build
+.PHONY: build install uninstall
 .PHONY: release/version release/changelog release/commit release/tag release
