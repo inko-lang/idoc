@@ -46,7 +46,7 @@ class ModuleName {
   }
 
   fn symbol_link(name: String) -> String {
-    '${link}${name}'
+    '${link}${name}/'
   }
 
   fn link -> String {

@@ -69,7 +69,7 @@ fn pub tests(t: mut Tests) {
   t.test('ModuleName.symbol_link', fn (t) {
     let name = ModuleName.new('std.foo')
 
-    t.equal(name.symbol_link('A'), '/module/std/foo/A')
+    t.equal(name.symbol_link('A'), '/module/std/foo/A/')
   })
 
   t.test('ModuleName.link', fn (t) {
