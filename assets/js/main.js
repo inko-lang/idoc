@@ -64,15 +64,25 @@
         { once: true }
       );
 
-      document.getElementById('search').addEventListener(
-        'reset',
-        () => this.reset()
-      );
+      const search = document.getElementById('search');
+
+      search.addEventListener('reset', () => this.reset());
+      search.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.cancelTimer();
+        this.showResults();
+      })
+    }
+
+    cancelTimer() {
+      if (this.timer_id) {
+        clearTimeout(this.timer_id);
+        this.timer_id = null;
+      }
     }
 
     inputChanged() {
-      if (this.timer_id) { clearTimeout(this.timer_id); }
-
+      this.cancelTimer();
       this.timer_id = setTimeout(() => { this.showResults(); }, DEBOUNCE);
     }
 
