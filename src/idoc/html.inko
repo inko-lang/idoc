@@ -52,7 +52,10 @@ fn link(href: String, rel: String) -> Element {
 fn head(page: String, title: String) -> Element {
   let head = Element.new('head')
 
-  head.attr('data-to-root', relative_url(page, '/'))
+  # We remove the trailing / here so that in the JS code we can just do the
+  # equivalent of `data-to-root + link`, without ending up with duplicate
+  # slashes (e.g. foo.com//module/...) in the URLs.
+  head.attr('data-to-root', relative_url(page, '/').strip_suffix('/'))
 
   # The search data can get pretty big so we want to cache it. Since the file is
   # generated dynamically, we can't use inko-wobsite's asset hashing feature,
