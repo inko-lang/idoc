@@ -1,4 +1,4 @@
-FROM ghcr.io/inko-lang/inko:main AS builder
+FROM ghcr.io/inko-lang/inko:latest AS builder
 ADD . /idoc
 WORKDIR /idoc
 RUN microdnf install --assumeyes git make
