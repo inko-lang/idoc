@@ -10,7 +10,7 @@ ASSETS := ${DATADIR}/idoc/assets
 
 build:
 	inko pkg sync
-	inko build --define "idoc.cmd.ASSETS=$$(realpath ${ASSETS})" -o ./build/idoc
+	inko build --define "idoc.cmd.ASSETS=$$(realpath --canonicalize-missing ${ASSETS})" -o ./build/idoc
 
 install: build
 	install -D --mode=755 build/idoc ${DESTDIR}${BINDIR}/idoc
