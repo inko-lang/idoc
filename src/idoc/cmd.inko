@@ -54,8 +54,12 @@ Upon completion, the generated files are found in ./build/idoc/public/',
   let _ = output.write_string(help)
 }
 
-fn generate_json(private: Bool, dependencies: Bool) -> Result[Nil, String] {
-  let cmd = Command.new('inko')
+fn generate_json(
+  executable: String,
+  private: Bool,
+  dependencies: Bool,
+) -> Result[Nil, String] {
+  let cmd = Command.new(executable)
 
   cmd.argument('doc')
   cmd.stdin(Stream.Null)
@@ -89,6 +93,7 @@ fn pub run(
   opts.flag('v', 'version', 'Show the version')
   opts.flag('p', 'private', 'Generate documentation for private symbols')
   opts.flag('d', 'dependencies', 'Generate documentation for dependencies')
+  opts.single('c', 'compiler', 'EXE', 'The compiler executable to use')
 
   let matches = try opts.parse(arguments).map_error(fn (e) { e.to_string })
 
@@ -104,6 +109,7 @@ fn pub run(
   }
 
   try generate_json(
+    matches.value('compiler').or('inko'),
     matches.contains?('private'),
     matches.contains?('dependencies'),
   )
