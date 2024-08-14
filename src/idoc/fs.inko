@@ -4,6 +4,7 @@ import std.fs.path (Path)
 import std.io (BufferedReader, Error)
 import std.range (InclusiveRange)
 
+let LF = 10
 let SPACE = 32
 let TAB = 9
 
@@ -21,7 +22,7 @@ fn read_source_code(
   let bytes = ByteArray.new
   let line = ByteArray.new
 
-  while reader.read_line(line).or(0) > 0 {
+  while reader.read_line(line, inclusive: true).or(0) > 0 {
     if lnum < lines.start {
       lnum += 1
     } else if lnum <= lines.end {
@@ -30,7 +31,7 @@ fn read_source_code(
       lnum += 1
       bytes.copy_from(line, at: min(dedent, ws), size: line.size)
     } else {
-      if bytes.last.or(-1) == 10 { bytes.pop }
+      if bytes.last.or(-1) == LF { bytes.pop }
 
       break
     }

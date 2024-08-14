@@ -1,6 +1,6 @@
 fn relative_url(from: String, to: String) -> String {
   let base = if from == '/' {
-    to.strip_prefix('/')
+    to.strip_prefix('/').or(to)
   } else {
     let mut steps = from.split('/').select(fn (v) { v != '' }).count
     let to_abs = to.starts_with?('/')
