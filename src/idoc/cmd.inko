@@ -61,12 +61,12 @@ fn generate_json(
 ) -> Result[Nil, String] {
   let cmd = Command.new(executable)
 
-  cmd.argument('doc')
-  cmd.stdin(Stream.Null)
+  cmd.arguments.push('doc')
+  cmd.stdin = Stream.Null
 
-  if private { cmd.argument('--private') }
+  if private { cmd.arguments.push('--private') }
 
-  if dependencies { cmd.argument('--dependencies') }
+  if dependencies { cmd.arguments.push('--dependencies') }
 
   let status = try cmd.spawn.then(fn (c) { c.wait }).map_error(fn (e) {
     'failed to start `inko doc`: ${e}'

@@ -6,10 +6,9 @@ import std.clone (Clone)
 import std.cmp (Compare, Ordering)
 import std.fs.file (ReadOnlyFile)
 import std.fs.path (Path)
-import std.iter (Stream)
 import std.json (Error, ErrorKind, PullParser)
 import std.range (InclusiveRange)
-import wobsite.markdown (SyntaxHighlight)
+import std.sync (Channel)
 
 let META = '$meta.json'
 
@@ -118,7 +117,7 @@ class Module {
   fn static parse_all(
     directory: ref Path,
   ) -> Result[Array[uni Module], String] {
-    let chan = Channel.new(size: 128)
+    let chan = Channel.new
     let mut pending = try directory
       .list
       .then(fn (iter) {
@@ -128,7 +127,7 @@ class Module {
               Ok({ @path = p, @type = File })
             if p.extension.or('') == 'json' and p.tail.starts_with?('$').false?
             -> {
-              Parser().parse(recover p.clone, chan)
+              Parser().parse(recover p.clone, recover chan.clone)
               Result.Ok(sum + 1)
             }
             case Ok(_) -> Result.Ok(sum)
@@ -869,7 +868,7 @@ impl Symbol for Trait {
 class async Parser {
   fn async parse(
     input: uni Path,
-    output: Channel[uni Result[Module, (Path, Error)]],
+    output: uni Channel[uni Result[Module, (Path, Error)]],
   ) {
     let res = recover {
       let input = recover input

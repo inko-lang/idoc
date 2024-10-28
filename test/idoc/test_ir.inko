@@ -4,6 +4,7 @@ import markdown
 import std.cmp (Ordering)
 import std.json (PullParser)
 import std.range (InclusiveRange)
+import std.sync (Channel)
 import std.test (Tests)
 
 fn two_paragraphs -> Markdown {
@@ -1125,17 +1126,17 @@ fn pub tests(t: mut Tests) {
 
   t.test('Parser.parse with valid modules', fn (t) {
     let dir = recover 'fixtures/valid/simple.json'.to_path
-    let chan = Channel.new(size: 1)
+    let chan = Channel.new
 
-    ir.Parser().parse(dir, chan)
+    ir.Parser().parse(dir, recover chan.clone)
     t.true(chan.receive.ok?)
   })
 
   t.test('Parser.parse with invalid modules', fn (t) {
     let dir = recover 'fixtures/invalid/simple.json'.to_path
-    let chan = Channel.new(size: 1)
+    let chan = Channel.new
 
-    ir.Parser().parse(dir, chan)
+    ir.Parser().parse(dir, recover chan.clone)
     t.true(chan.receive.error?)
   })
 

@@ -1,13 +1,10 @@
 import builder.html
-import idoc.fs (read_source_code)
 import idoc.html (
-  atomic, container, head, header, highlight_inko, implementations, link_to,
-  methods, page_title, private, search_results, sidebar, source_block,
-  symbol_info, type_signature, value_type, with_table_of_contents,
+  container, head, header, highlight_inko, implementations, link_to, methods,
+  page_title, private, search_results, sidebar, with_table_of_contents,
 )
 import idoc.ir
 import idoc.module_name (ModuleName)
-import std.set (Set)
 import wobsite (Files, UpdateAssetLinks)
 import wobsite.url (file_url)
 

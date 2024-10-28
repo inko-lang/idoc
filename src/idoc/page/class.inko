@@ -1,5 +1,4 @@
 import builder.html
-import idoc.fs (read_source_code)
 import idoc.html (
   atomic, container, head, header, highlight_inko, implementations, link_to,
   methods, page_title, private, search_results, sidebar, symbol_info,

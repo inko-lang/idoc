@@ -1,8 +1,8 @@
 import builder.html
 import idoc.fs (read_source_code)
 import idoc.html (
-  container, head, header, highlight_inko, link_to, page_title, private,
-  search_results, sidebar, source_block, symbol_info, with_table_of_contents,
+  container, head, header, link_to, page_title, private, search_results,
+  sidebar, source_block, with_table_of_contents,
 )
 import idoc.ir (Constant)
 import idoc.module_name (ModuleName)

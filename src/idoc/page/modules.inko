@@ -9,7 +9,6 @@ import idoc.module_name (ModuleName)
 import idoc.url (relative_url)
 import std.fs.path (Path)
 import wobsite (Files, UpdateAssetLinks)
-import wobsite.markdown (SyntaxHighlight)
 import wobsite.url (file_url)
 
 let TITLE = 'Documentation'

@@ -6,7 +6,6 @@ import std.cmp (Compare, Ordering)
 import std.int (ToInt)
 import std.json (Json)
 import wobsite (Files)
-import wobsite.markdown (SyntaxHighlight)
 
 class enum Kind {
   case Module

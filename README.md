@@ -11,7 +11,7 @@ at `./build/idoc/public`. For more information, run `idoc --help`.
 
 ## Requirements
 
-- Inko 0.15.0 or newer
+- Inko 0.17.0 or newer
 
 ## Installation
 

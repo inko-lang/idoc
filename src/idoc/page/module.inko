@@ -4,13 +4,9 @@ import idoc.html (
   value_type, with_table_of_contents,
 )
 import idoc.ir
-import idoc.markdown (Markdown)
 import idoc.module_name (ModuleName)
 import idoc.url (relative_url)
-import std.cmp (Compare, Ordering)
-import std.iter (Iter)
 import wobsite (Files, UpdateAssetLinks)
-import wobsite.markdown (SyntaxHighlight)
 import wobsite.url (file_url)
 
 class enum ValueSemantics {
