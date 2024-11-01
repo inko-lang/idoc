@@ -6,7 +6,7 @@ import std.clone (Clone)
 import std.cmp (Compare, Ordering)
 import std.fs.file (ReadOnlyFile)
 import std.fs.path (Path)
-import std.json (Error, ErrorKind, PullParser)
+import std.json (Error, ErrorKind, ObjectParser, PullParser)
 import std.range (InclusiveRange)
 import std.sync (Channel)
 
@@ -22,16 +22,13 @@ fn read_file(path: Path) -> Result[ByteArray, Error] {
   Result.Ok(bytes)
 }
 
-# Parses a stream of bytes into an `InclusiveRange`.
-fn parse_range(parser: mut PullParser) -> Result[InclusiveRange, Error] {
-  let range = InclusiveRange.new(1, 1)
+# Returns a JSON parser that parses an inclusive range.
+fn range_parser -> ObjectParser[InclusiveRange] {
+  let parser: ObjectParser[InclusiveRange] = ObjectParser.new
 
+  parser.int('start', fn (r, v) { r.start = v }).require
+  parser.int('end', fn (r, v) { r.end = v }).require
   parser
-    .object
-    .int('start', fn (v) { range.start = v })
-    .int('end', fn (v) { range.end = v })
-    .require_all
-  Result.Ok(range)
 }
 
 # A type describing a symbol, such as a class or constant.
@@ -69,19 +66,18 @@ class Location {
     Location(InclusiveRange.new(1, 1), InclusiveRange.new(1, 1))
   }
 
-  fn static parse(parser: mut PullParser) -> Result[Location, Error] {
-    let location = Location(1.to(1), 1.to(1))
+  fn static parser -> ObjectParser[Location] {
+    let parser: ObjectParser[Location] = ObjectParser.new
+    let lines = range_parser
+    let cols = range_parser
 
     parser
-      .object
-      .key('lines', fn {
-        parse_range(parser).map(fn (v) { location.lines = v })
-      })
-      .key('columns', fn {
-        parse_range(parser).map(fn (v) { location.columns = v })
-      })
-      .require_all
-    Result.Ok(location)
+      .key('lines', fn move (parser, loc) { lines.parse(parser, loc.lines) })
+      .require
+    parser
+      .key('columns', fn move (parser, loc) { cols.parse(parser, loc.columns) })
+      .require
+    parser
   }
 }
 
@@ -113,6 +109,18 @@ class Module {
 
   # The traits defined in this module.
   let @traits: Array[Trait]
+
+  fn static default -> Module {
+    Module(
+      name: '',
+      file: ''.to_path,
+      documentation: Markdown.new,
+      constants: [],
+      methods: [],
+      classes: [],
+      traits: [],
+    )
+  }
 
   fn static parse_all(
     directory: ref Path,
@@ -155,45 +163,65 @@ class Module {
     Result.Ok(modules)
   }
 
-  fn static parse_file(path: Path) -> Result[Module, Error] {
-    let mod = Module(
-      name: '',
-      file: ''.to_path,
-      documentation: Markdown.new,
-      constants: [],
-      methods: [],
-      classes: [],
-      traits: [],
-    )
+  fn static parser -> ObjectParser[Module] {
+    let parser: ObjectParser[Module] = ObjectParser.new
+    let const_parser = Constant.parser
+    let method_parser = Method.parser
+    let class_parser = Class.parser
+    let trait_parser = Trait.parser
 
+    parser.string('name', fn (mod, v) { mod.name = v }).require
+    parser.string('file', fn (mod, v) { mod.file = v.to_path }).require
+    parser
+      .key('documentation', fn (parser, mod) {
+        Markdown.parse(parser).map(fn (v) { mod.documentation = v })
+      })
+      .require
+    parser
+      .values('constants', fn move (parser, mod) {
+        let const = Constant.default
+
+        try const_parser.parse(parser, const)
+        Result.Ok(mod.constants.push(const))
+      })
+      .require
+    parser
+      .values('methods', fn move (parser, mod) {
+        let method = Method.default
+
+        try method_parser.parse(parser, method)
+        Result.Ok(mod.methods.push(method))
+      })
+      .require
+    parser
+      .values('classes', fn move (parser, mod) {
+        let cls = Class.default
+
+        try class_parser.parse(parser, cls)
+        cls.sort
+        Result.Ok(mod.classes.push(cls))
+      })
+      .require
+    parser
+      .values('traits', fn move (parser, mod) {
+        let trt = Trait.default
+
+        try trait_parser.parse(parser, trt)
+        trt.sort
+        Result.Ok(mod.traits.push(trt))
+      })
+      .require
+
+    parser
+  }
+
+  fn static parse_file(path: Path) -> Result[Module, Error] {
+    let mod = Module.default
     let bytes = try read_file(path)
     let parser = PullParser.new(bytes)
 
-    try parser
-      .object
-      .string('name', fn (v) { mod.name = v })
-      .string('file', fn (v) { mod.file = v.to_path })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { mod.documentation = v })
-      })
-      .values('constants', fn {
-        Constant.parse(parser).map(fn (v) { mod.constants.push(v) })
-      })
-      .values('methods', fn {
-        Method.parse(parser).map(fn (v) { mod.methods.push(v) })
-      })
-      .values('classes', fn {
-        Class.parse(parser).map(fn (v) { mod.classes.push(v) })
-      })
-      .values('traits', fn {
-        Trait.parse(parser).map(fn (v) { mod.traits.push(v) })
-      })
-      .require_all
-
-    mod.constants.sort
-    mod.methods.sort
-    mod.traits.sort
-    mod.classes.sort
+    try Module.parser.parse(parser, mod)
+    mod.sort
     Result.Ok(mod)
   }
 
@@ -219,6 +247,13 @@ class Module {
   fn unique_traits -> Array[uni Trait] {
     @traits.iter.map(fn (v) { recover v.clone }).to_array
   }
+
+  fn mut sort {
+    @constants.sort
+    @methods.sort
+    @traits.sort
+    @classes.sort
+  }
 }
 
 # A type describing the documentation metadata file.
@@ -229,16 +264,16 @@ class Metadata {
   fn static parse(directory: ref Path) -> Result[Metadata, Error] {
     let path = directory.join(META)
     let bytes = try read_file(path)
-    let parser = PullParser.new(bytes)
     let meta = Metadata(readme: Markdown.new)
+    let parser: ObjectParser[Metadata] = ObjectParser.new
 
-    try parser
-      .object
-      .key('readme', fn {
+    parser
+      .key('readme', fn (parser, meta) {
         Markdown.parse(parser).map(fn (v) { meta.readme = v })
       })
-      .require_all
+      .require
 
+    try parser.parse(PullParser.new(bytes), meta)
     Result.Ok(meta)
   }
 }
@@ -260,29 +295,31 @@ class Constant {
   # The documentation of the symbol.
   let @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Constant, Error] {
-    let val = Constant(
+  fn static default -> Constant {
+    Constant(
       name: '',
       location: Location.default,
       public: false,
       type: '',
       documentation: Markdown.new,
     )
+  }
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
-      })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+  fn static parser -> ObjectParser[Constant] {
+    let parser: ObjectParser[Constant] = ObjectParser.new
+    let loc = Location.parser
 
-    Result.Ok(val)
+    parser.string('name', fn (c, v) { c.name = v }).require
+    parser.key('location', fn move (p, c) { loc.parse(p, c.location) }).require
+    parser.bool('public', fn (c, v) { c.public = v }).require
+    parser.string('type', fn (c, v) { c.type = v }).require
+    parser
+      .key('documentation', fn (p, c) {
+        Markdown.parse(p).map(fn (v) { c.documentation = v })
+      })
+      .require
+
+    parser
   }
 }
 
@@ -339,29 +376,33 @@ class Field {
   # The documentation of the symbol.
   let @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Field, Error] {
-    let val = Field(
+  fn static default -> Field {
+    Field(
       name: '',
       location: Location.default,
       public: false,
       type: '',
       documentation: Markdown.new,
     )
+  }
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
-      })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+  fn static parser -> ObjectParser[Field] {
+    let parser: ObjectParser[Field] = ObjectParser.new
+    let location = Location.parser
 
-    Result.Ok(val)
+    parser.string('name', fn (f, v) { f.name = v }).require
+    parser
+      .key('location', fn move (p, f) { location.parse(p, f.location) })
+      .require
+    parser.bool('public', fn (f, v) { f.public = v }).require
+    parser.string('type', fn (f, v) { f.type = v }).require
+    parser
+      .key('documentation', fn (p, f) {
+        Markdown.parse(p).map(fn (v) { f.documentation = v })
+      })
+      .require
+
+    parser
   }
 }
 
@@ -391,27 +432,30 @@ class Constructor {
   # The documentation of the symbol.
   let @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Constructor, Error] {
-    let val = Constructor(
+  fn static default -> Constructor {
+    Constructor(
       name: '',
       location: Location.default,
       type: '',
       documentation: Markdown.new,
     )
+  }
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
-      })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+  fn static parser -> ObjectParser[Constructor] {
+    let parser: ObjectParser[Constructor] = ObjectParser.new
+    let location = Location.parser
 
-    Result.Ok(val)
+    parser.string('name', fn (c, v) { c.name = v }).require
+    parser
+      .key('location', fn move (p, c) { location.parse(p, c.location) })
+      .require
+    parser.string('type', fn (c, v) { c.type = v }).require
+    parser
+      .key('documentation', fn (p, c) {
+        Markdown.parse(p).map(fn (v) { c.documentation = v })
+      })
+      .require
+    parser
   }
 }
 
@@ -449,8 +493,8 @@ class Method {
   # The documentation of the symbol.
   let @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Method, Error] {
-    let val = Method(
+  fn static default -> Method {
+    Method(
       name: '',
       file: ''.to_path,
       location: Location.default,
@@ -458,22 +502,23 @@ class Method {
       type: '',
       documentation: Markdown.new,
     )
+  }
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .string('file', fn (v) { val.file = v.to_path })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
-      })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+  fn static parser -> ObjectParser[Method] {
+    let parser: ObjectParser[Method] = ObjectParser.new
+    let loc = Location.parser
 
-    Result.Ok(val)
+    parser.string('name', fn (m, v) { m.name = v }).require
+    parser.string('file', fn (m, v) { m.file = v.to_path }).require
+    parser.key('location', fn move (p, m) { loc.parse(p, m.location) }).require
+    parser.bool('public', fn (m, v) { m.public = v }).require
+    parser.string('type', fn (m, v) { m.type = v }).require
+    parser
+      .key('documentation', fn (p, m) {
+        Markdown.parse(p).map(fn (v) { m.documentation = v })
+      })
+      .require
+    parser
   }
 }
 
@@ -594,18 +639,18 @@ class Implementation {
   # A boolean indicating if the implemented trait is public or not.
   let @public: Bool
 
-  fn static parse(parser: mut PullParser) -> Result[Implementation, Error] {
-    let imp = Implementation(module: '', name: '', type: '', public: false)
+  fn static default -> Implementation {
+    Implementation(module: '', name: '', type: '', public: false)
+  }
 
-    try parser
-      .object
-      .string('module', fn (v) { imp.module = v })
-      .string('name', fn (v) { imp.name = v })
-      .string('type', fn (v) { imp.type = v })
-      .bool('public', fn (v) { imp.public = v })
-      .require_all
+  fn static parser -> ObjectParser[Implementation] {
+    let parser: ObjectParser[Implementation] = ObjectParser.new
 
-    Result.Ok(imp)
+    parser.string('module', fn (i, v) { i.module = v }).require
+    parser.string('name', fn (i, v) { i.name = v }).require
+    parser.string('type', fn (i, v) { i.type = v }).require
+    parser.bool('public', fn (i, v) { i.public = v }).require
+    parser
   }
 }
 
@@ -659,8 +704,8 @@ class Class {
   # The traits implemented by this class.
   let @implemented_traits: Array[Implementation]
 
-  fn static parse(parser: mut PullParser) -> Result[Class, Error] {
-    let val = Class(
+  fn static default -> Class {
+    Class(
       name: '',
       location: Location.default,
       kind: ClassKind.Regular,
@@ -673,42 +718,77 @@ class Class {
       instance_methods: [],
       implemented_traits: [],
     )
+  }
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
-      })
-      .int('kind', fn (v) { val.kind = ClassKind.from(v) })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .values('constructors', fn {
-        Constructor.parse(parser).map(fn (v) { val.constructors.push(v) })
-      })
-      .values('fields', fn {
-        Field.parse(parser).map(fn (v) { val.fields.push(v) })
-      })
-      .values('static_methods', fn {
-        Method.parse(parser).map(fn (v) { val.static_methods.push(v) })
-      })
-      .values('instance_methods', fn {
-        Method.parse(parser).map(fn (v) { val.instance_methods.push(v) })
-      })
-      .values('implemented_traits', fn {
-        Implementation.parse(parser).map(fn (v) {
-          val.implemented_traits.push(v)
-        })
-      })
-      .require_all
+  fn static parser -> ObjectParser[Class] {
+    let parser: ObjectParser[Class] = ObjectParser.new
+    let field_parser = Field.parser
+    let loc_parser = Location.parser
+    let cons_parser = Constructor.parser
+    let static_method_parser = Method.parser
+    let instance_method_parser = Method.parser
+    let imp_parser = Implementation.parser
 
-    val.instance_methods.sort
-    val.static_methods.sort
-    val.implemented_traits.sort
-    Result.Ok(val)
+    parser.string('name', fn (c, v) { c.name = v }).require
+    parser
+      .key('location', fn move (p, c) { loc_parser.parse(p, c.location) })
+      .require
+    parser.int('kind', fn (c, v) { c.kind = ClassKind.from(v) }).require
+    parser.bool('public', fn (c, v) { c.public = v }).require
+    parser.string('type', fn (c, v) { c.type = v }).require
+    parser
+      .key('documentation', fn (p, c) {
+        Markdown.parse(p).map(fn (v) { c.documentation = v })
+      })
+      .require
+    parser
+      .values('constructors', fn move (p, c) {
+        let cons = Constructor.default
+
+        try cons_parser.parse(p, cons)
+        Result.Ok(c.constructors.push(cons))
+      })
+      .require
+    parser
+      .values('fields', fn move (p, c) {
+        let field = Field.default
+
+        try field_parser.parse(p, field)
+        Result.Ok(c.fields.push(field))
+      })
+      .require
+    parser
+      .values('static_methods', fn move (p, c) {
+        let m = Method.default
+
+        try static_method_parser.parse(p, m)
+        Result.Ok(c.static_methods.push(m))
+      })
+      .require
+    parser
+      .values('instance_methods', fn move (p, c) {
+        let m = Method.default
+
+        try instance_method_parser.parse(p, m)
+        Result.Ok(c.instance_methods.push(m))
+      })
+      .require
+    parser
+      .values('implemented_traits', fn move (p, c) {
+        let imp = Implementation.default
+
+        imp_parser.parse(p, imp)
+        Result.Ok(c.implemented_traits.push(imp))
+      })
+      .require
+
+    parser
+  }
+
+  fn mut sort {
+    @instance_methods.sort
+    @static_methods.sort
+    @implemented_traits.sort
   }
 }
 
@@ -784,8 +864,8 @@ class Trait {
   # The implementations of this trait.
   let @implementations: Array[Implementation]
 
-  fn static parse(parser: mut PullParser) -> Result[Trait, Error] {
-    let val = Trait(
+  fn static default -> Trait {
+    Trait(
       name: '',
       location: Location.default,
       public: false,
@@ -795,33 +875,57 @@ class Trait {
       default_methods: [],
       implementations: [],
     )
+  }
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
-      })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .values('required_methods', fn {
-        Method.parse(parser).map(fn (v) { val.required_methods.push(v) })
-      })
-      .values('default_methods', fn {
-        Method.parse(parser).map(fn (v) { val.default_methods.push(v) })
-      })
-      .values('implementations', fn {
-        Implementation.parse(parser).map(fn (v) { val.implementations.push(v) })
-      })
-      .require_all
+  fn static parser -> ObjectParser[Trait] {
+    let parser: ObjectParser[Trait] = ObjectParser.new
+    let loc_parser = Location.parser
+    let req_method_parser = Method.parser
+    let def_method_parser = Method.parser
+    let imp_parser = Implementation.parser
 
-    val.required_methods.sort
-    val.default_methods.sort
-    val.implementations.sort
-    Result.Ok(val)
+    parser.string('name', fn (t, v) { t.name = v }).require
+    parser
+      .key('location', fn move (p, t) { loc_parser.parse(p, t.location) })
+      .require
+    parser.bool('public', fn (t, v) { t.public = v }).require
+    parser.string('type', fn (t, v) { t.type = v }).require
+    parser
+      .key('documentation', fn (p, t) {
+        Markdown.parse(p).map(fn (v) { t.documentation = v })
+      })
+      .require
+    parser
+      .values('required_methods', fn move (p, t) {
+        let m = Method.default
+
+        try req_method_parser.parse(p, m)
+        Result.Ok(t.required_methods.push(m))
+      })
+      .require
+    parser
+      .values('default_methods', fn move (p, t) {
+        let m = Method.default
+
+        try def_method_parser.parse(p, m)
+        Result.Ok(t.default_methods.push(m))
+      })
+      .require
+    parser
+      .values('implementations', fn move (p, t) {
+        let imp = Implementation.default
+
+        try imp_parser.parse(p, imp)
+        Result.Ok(t.implementations.push(imp))
+      })
+      .require
+    parser
+  }
+
+  fn mut sort {
+    @required_methods.sort
+    @default_methods.sort
+    @implementations.sort
   }
 }
 

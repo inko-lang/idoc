@@ -28,11 +28,13 @@ fn empty_class(kind: ir.ClassKind) -> ir.Class {
 }
 
 fn pub tests(t: mut Tests) {
-  t.test('parse_range', fn (t) {
+  t.test('range_parser', fn (t) {
     let parser = PullParser.new('{"start":2,"end":3}')
-    let res = ir.parse_range(parser)
+    let range = InclusiveRange.new(0, 0)
+    let res = ir.range_parser.parse(parser, range)
 
-    t.equal(res, Result.Ok(InclusiveRange.new(2, 3)))
+    t.true(res.ok?)
+    t.equal(range, InclusiveRange.new(2, 3))
   })
 
   t.test('Location.default', fn (t) {
@@ -42,13 +44,14 @@ fn pub tests(t: mut Tests) {
     t.equal(loc.columns, InclusiveRange.new(1, 1))
   })
 
-  t.ok('Location.parse', fn (t) {
+  t.ok('Location.parser', fn (t) {
     let parser = PullParser.new(
       '{ "lines": { "start": 1, "end": 2 }, "columns": { "start": 3, "end": 4 } }',
     )
 
-    let loc = try ir.Location.parse(parser)
+    let loc = ir.Location.default
 
+    try ir.Location.parser.parse(parser, loc)
     t.equal(loc.lines, InclusiveRange.new(1, 2))
     t.equal(loc.columns, InclusiveRange.new(3, 4))
     Result.Ok(nil)
@@ -227,7 +230,7 @@ fn pub tests(t: mut Tests) {
     Result.Ok(nil)
   })
 
-  t.ok('Constant.parse', fn (t) {
+  t.ok('Constant.parser', fn (t) {
     let parser = PullParser.new(
       '
       {
@@ -243,7 +246,9 @@ fn pub tests(t: mut Tests) {
       ',
     )
 
-    let const = try ir.Constant.parse(parser)
+    let const = ir.Constant.default
+
+    try ir.Constant.parser.parse(parser, const)
 
     t.equal(const.name, 'A')
     t.equal(const.location.lines, InclusiveRange.new(1, 2))
@@ -353,7 +358,7 @@ fn pub tests(t: mut Tests) {
     )
   })
 
-  t.ok('Field.parse', fn (t) {
+  t.ok('Field.parser', fn (t) {
     let parser = PullParser.new(
       '
       {
@@ -369,7 +374,9 @@ fn pub tests(t: mut Tests) {
       ',
     )
 
-    let field = try ir.Field.parse(parser)
+    let field = ir.Field.default
+
+    try ir.Field.parser.parse(parser, field)
 
     t.equal(field.name, 'foo')
     t.equal(field.location.lines, InclusiveRange.new(1, 2))
@@ -400,7 +407,7 @@ fn pub tests(t: mut Tests) {
     t.equal(b.type, a.type)
   })
 
-  t.ok('Constructor.parse', fn (t) {
+  t.ok('Constructor.parser', fn (t) {
     let parser = PullParser.new(
       '
       {
@@ -415,14 +422,16 @@ fn pub tests(t: mut Tests) {
       ',
     )
 
-    let const = try ir.Constructor.parse(parser)
+    let cons = ir.Constructor.default
 
-    t.equal(const.name, 'A')
-    t.equal(const.location.lines, InclusiveRange.new(1, 2))
-    t.equal(const.location.columns, InclusiveRange.new(1, 2))
-    t.equal(const.type, 'Int')
+    try ir.Constructor.parser.parse(parser, cons)
+
+    t.equal(cons.name, 'A')
+    t.equal(cons.location.lines, InclusiveRange.new(1, 2))
+    t.equal(cons.location.columns, InclusiveRange.new(1, 2))
+    t.equal(cons.type, 'Int')
     t.equal(
-      const.documentation.to_html(increment_headings: 0).to_string,
+      cons.documentation.to_html(increment_headings: 0).to_string,
       '<p>Example</p>',
     )
 
@@ -444,7 +453,7 @@ fn pub tests(t: mut Tests) {
     t.equal(b.type, a.type)
   })
 
-  t.ok('Method.parse', fn (t) {
+  t.ok('Method.parser', fn (t) {
     let parser = PullParser.new(
       '
       {
@@ -460,7 +469,9 @@ fn pub tests(t: mut Tests) {
       }
       ',
     )
-    let method = try ir.Method.parse(parser)
+    let method = ir.Method.default
+
+    try ir.Method.parser.parse(parser, method)
 
     t.equal(method.name, 'foo')
     t.equal(method.file, 'test.inko'.to_path)
@@ -630,7 +641,7 @@ fn pub tests(t: mut Tests) {
     )
   })
 
-  t.ok('Implementation.parse', fn (t) {
+  t.ok('Implementation.parser', fn (t) {
     let parser = PullParser.new(
       '
       {
@@ -641,7 +652,9 @@ fn pub tests(t: mut Tests) {
       }
       ',
     )
-    let imp = try ir.Implementation.parse(parser)
+    let imp = ir.Implementation.default
+
+    try ir.Implementation.parser.parse(parser, imp)
 
     t.equal(imp.module, 'std.foo')
     t.equal(imp.name, 'Foo')
@@ -677,7 +690,7 @@ fn pub tests(t: mut Tests) {
     t.equal(a.cmp(a), Ordering.Equal)
   })
 
-  t.ok('Class.parse', fn (t) {
+  t.ok('Class.parser', fn (t) {
     let parser = PullParser.new(
       '
       {
@@ -751,7 +764,9 @@ fn pub tests(t: mut Tests) {
       ',
     )
 
-    let cls = try ir.Class.parse(parser)
+    let cls = ir.Class.default
+
+    try ir.Class.parser.parse(parser, cls)
 
     t.equal(cls.name, 'A')
     t.equal(cls.location.lines, InclusiveRange.new(1, 2))
@@ -943,7 +958,7 @@ fn pub tests(t: mut Tests) {
     )
   })
 
-  t.ok('Trait.parse', fn (t) {
+  t.ok('Trait.parser', fn (t) {
     let parser = PullParser.new(
       '
       {
@@ -993,7 +1008,9 @@ fn pub tests(t: mut Tests) {
       ',
     )
 
-    let trt = try ir.Trait.parse(parser)
+    let trt = ir.Trait.default
+
+    try ir.Trait.parser.parse(parser, trt)
 
     t.equal(trt.name, 'A')
     t.equal(trt.location.lines, InclusiveRange.new(1, 2))
