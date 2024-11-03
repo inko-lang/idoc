@@ -2,6 +2,7 @@ import idoc.ir
 import idoc.markdown (Markdown)
 import markdown
 import std.cmp (Ordering)
+import std.io (Buffer)
 import std.json (PullParser)
 import std.range (InclusiveRange)
 import std.sync (Channel)
@@ -9,6 +10,10 @@ import std.test (Tests)
 
 fn two_paragraphs -> Markdown {
   Markdown(markdown.Document.parse('first\n\nsecond').get)
+}
+
+fn pull(input: String) -> PullParser[Buffer[String]] {
+  PullParser.new(Buffer.new(input))
 }
 
 fn empty_class(kind: ir.ClassKind) -> ir.Class {
@@ -29,7 +34,7 @@ fn empty_class(kind: ir.ClassKind) -> ir.Class {
 
 fn pub tests(t: mut Tests) {
   t.test('parse_range', fn (t) {
-    let parser = PullParser.new('{"start":2,"end":3}')
+    let parser = pull('{"start":2,"end":3}')
     let range = InclusiveRange.new(2, 3)
     let res = ir.parse_range(parser, range)
 
@@ -46,7 +51,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Location.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '{ "lines": { "start": 1, "end": 2 }, "columns": { "start": 3, "end": 4 } }',
     )
 
@@ -233,7 +238,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Constant.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "A",
@@ -359,7 +364,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Field.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "foo",
@@ -406,7 +411,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Constructor.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "A",
@@ -450,7 +455,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Method.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "foo",
@@ -636,7 +641,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Implementation.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "module": "std.foo",
@@ -683,7 +688,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Class.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "A",
@@ -949,7 +954,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Trait.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "A",

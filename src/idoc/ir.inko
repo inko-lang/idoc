@@ -6,25 +6,16 @@ import std.clone (Clone)
 import std.cmp (Compare, Ordering)
 import std.fs.file (ReadOnlyFile)
 import std.fs.path (Path)
+import std.io (Read)
 import std.json (Error, ErrorKind, PullParser)
 import std.range (InclusiveRange)
 import std.sync (Channel)
 
 let META = '$meta.json'
 
-fn read_file(path: Path) -> Result[ByteArray, Error] {
-  let bytes = ByteArray.new
-
-  try ReadOnlyFile.new(path).then(fn (f) { f.read_all(bytes) }).map_error(
-    fn (e) { Error(kind: ErrorKind.Read(e), offset: 0) },
-  )
-
-  Result.Ok(bytes)
-}
-
 # Parses a stream of bytes into an `InclusiveRange`.
-fn parse_range(
-  parser: mut PullParser,
+fn parse_range[T: mut + Read](
+  parser: mut PullParser[T],
   range: mut InclusiveRange,
 ) -> Result[Nil, Error] {
   try parser.object(fn (o) {
@@ -70,8 +61,8 @@ class Location {
     Location(InclusiveRange.new(1, 1), InclusiveRange.new(1, 1))
   }
 
-  fn static parse(
-    parser: mut PullParser,
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
     location: mut Location,
   ) -> Result[Nil, Error] {
     try parser.object(fn (o) {
@@ -164,8 +155,11 @@ class Module {
       traits: [],
     )
 
-    let bytes = try read_file(path)
-    let parser = PullParser.new(bytes)
+    let file = try ReadOnlyFile.new(path).map_error(fn (e) {
+      Error(kind: ErrorKind.Read(e), offset: 0)
+    })
+
+    let parser = PullParser.new(file)
 
     try parser.object(fn (o) {
       o.string('name', fn (v) { mod.name = v })
@@ -225,8 +219,10 @@ class Metadata {
 
   fn static parse(directory: ref Path) -> Result[Metadata, Error] {
     let path = directory.join(META)
-    let bytes = try read_file(path)
-    let parser = PullParser.new(bytes)
+    let file = try ReadOnlyFile.new(path).map_error(fn (e) {
+      Error(kind: ErrorKind.Read(e), offset: 0)
+    })
+    let parser = PullParser.new(file)
     let meta = Metadata(readme: Markdown.new)
 
     try parser.object(fn (o) {
@@ -256,7 +252,9 @@ class Constant {
   # The documentation of the symbol.
   let @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Constant, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Constant, Error] {
     let val = Constant(
       name: '',
       location: Location.default,
@@ -332,7 +330,9 @@ class Field {
   # The documentation of the symbol.
   let @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Field, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Field, Error] {
     let val = Field(
       name: '',
       location: Location.default,
@@ -381,7 +381,9 @@ class Constructor {
   # The documentation of the symbol.
   let @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Constructor, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Constructor, Error] {
     let val = Constructor(
       name: '',
       location: Location.default,
@@ -436,7 +438,9 @@ class Method {
   # The documentation of the symbol.
   let @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Method, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Method, Error] {
     let val = Method(
       name: '',
       file: ''.to_path,
@@ -578,7 +582,9 @@ class Implementation {
   # A boolean indicating if the implemented trait is public or not.
   let @public: Bool
 
-  fn static parse(parser: mut PullParser) -> Result[Implementation, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Implementation, Error] {
     let imp = Implementation(module: '', name: '', type: '', public: false)
 
     try parser.object(fn (o) {
@@ -642,7 +648,9 @@ class Class {
   # The traits implemented by this class.
   let @implemented_traits: Array[Implementation]
 
-  fn static parse(parser: mut PullParser) -> Result[Class, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Class, Error] {
     let val = Class(
       name: '',
       location: Location.default,
@@ -762,7 +770,9 @@ class Trait {
   # The implementations of this trait.
   let @implementations: Array[Implementation]
 
-  fn static parse(parser: mut PullParser) -> Result[Trait, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Trait, Error] {
     let val = Trait(
       name: '',
       location: Location.default,
