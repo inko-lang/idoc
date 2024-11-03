@@ -30,9 +30,12 @@ fn empty_class(kind: ir.ClassKind) -> ir.Class {
 fn pub tests(t: mut Tests) {
   t.test('parse_range', fn (t) {
     let parser = PullParser.new('{"start":2,"end":3}')
-    let res = ir.parse_range(parser)
+    let range = InclusiveRange.new(2, 3)
+    let res = ir.parse_range(parser, range)
 
-    t.equal(res, Result.Ok(InclusiveRange.new(2, 3)))
+    t.true(res.ok?)
+    t.equal(range.start, 2)
+    t.equal(range.end, 3)
   })
 
   t.test('Location.default', fn (t) {
@@ -47,7 +50,9 @@ fn pub tests(t: mut Tests) {
       '{ "lines": { "start": 1, "end": 2 }, "columns": { "start": 3, "end": 4 } }',
     )
 
-    let loc = try ir.Location.parse(parser)
+    let loc = ir.Location.default
+
+    try ir.Location.parse(parser, loc)
 
     t.equal(loc.lines, InclusiveRange.new(1, 2))
     t.equal(loc.columns, InclusiveRange.new(3, 4))

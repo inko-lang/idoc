@@ -23,15 +23,16 @@ fn read_file(path: Path) -> Result[ByteArray, Error] {
 }
 
 # Parses a stream of bytes into an `InclusiveRange`.
-fn parse_range(parser: mut PullParser) -> Result[InclusiveRange, Error] {
-  let range = InclusiveRange.new(1, 1)
+fn parse_range(
+  parser: mut PullParser,
+  range: mut InclusiveRange,
+) -> Result[Nil, Error] {
+  try parser.object(fn (o) {
+    o.int('start', fn (v) { range.start = v })
+    o.int('end', fn (v) { range.end = v })
+  })
 
-  parser
-    .object
-    .int('start', fn (v) { range.start = v })
-    .int('end', fn (v) { range.end = v })
-    .require_all
-  Result.Ok(range)
+  Result.Ok(nil)
 }
 
 # A type describing a symbol, such as a class or constant.
@@ -69,19 +70,16 @@ class Location {
     Location(InclusiveRange.new(1, 1), InclusiveRange.new(1, 1))
   }
 
-  fn static parse(parser: mut PullParser) -> Result[Location, Error] {
-    let location = Location(1.to(1), 1.to(1))
+  fn static parse(
+    parser: mut PullParser,
+    location: mut Location,
+  ) -> Result[Nil, Error] {
+    try parser.object(fn (o) {
+      o.key('lines', fn (p) { parse_range(p, location.lines) })
+      o.key('columns', fn (p) { parse_range(p, location.columns) })
+    })
 
-    parser
-      .object
-      .key('lines', fn {
-        parse_range(parser).map(fn (v) { location.lines = v })
-      })
-      .key('columns', fn {
-        parse_range(parser).map(fn (v) { location.columns = v })
-      })
-      .require_all
-    Result.Ok(location)
+    Result.Ok(nil)
   }
 }
 
@@ -169,26 +167,25 @@ class Module {
     let bytes = try read_file(path)
     let parser = PullParser.new(bytes)
 
-    try parser
-      .object
-      .string('name', fn (v) { mod.name = v })
-      .string('file', fn (v) { mod.file = v.to_path })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { mod.documentation = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { mod.name = v })
+      o.string('file', fn (v) { mod.file = v.to_path })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { mod.documentation = v })
       })
-      .values('constants', fn {
-        Constant.parse(parser).map(fn (v) { mod.constants.push(v) })
+      o.values('constants', fn (p) {
+        Constant.parse(p).map(fn (v) { mod.constants.push(v) })
       })
-      .values('methods', fn {
-        Method.parse(parser).map(fn (v) { mod.methods.push(v) })
+      o.values('methods', fn (p) {
+        Method.parse(p).map(fn (v) { mod.methods.push(v) })
       })
-      .values('classes', fn {
-        Class.parse(parser).map(fn (v) { mod.classes.push(v) })
+      o.values('classes', fn (p) {
+        Class.parse(p).map(fn (v) { mod.classes.push(v) })
       })
-      .values('traits', fn {
-        Trait.parse(parser).map(fn (v) { mod.traits.push(v) })
+      o.values('traits', fn (p) {
+        Trait.parse(p).map(fn (v) { mod.traits.push(v) })
       })
-      .require_all
+    })
 
     mod.constants.sort
     mod.methods.sort
@@ -232,12 +229,11 @@ class Metadata {
     let parser = PullParser.new(bytes)
     let meta = Metadata(readme: Markdown.new)
 
-    try parser
-      .object
-      .key('readme', fn {
-        Markdown.parse(parser).map(fn (v) { meta.readme = v })
+    try parser.object(fn (o) {
+      o.key('readme', fn (p) {
+        Markdown.parse(p).map(fn (v) { meta.readme = v })
       })
-      .require_all
+    })
 
     Result.Ok(meta)
   }
@@ -269,18 +265,15 @@ class Constant {
       documentation: Markdown.new,
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.bool('public', fn (v) { val.public = v })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+    })
 
     Result.Ok(val)
   }
@@ -348,18 +341,15 @@ class Field {
       documentation: Markdown.new,
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.bool('public', fn (v) { val.public = v })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+    })
 
     Result.Ok(val)
   }
@@ -399,17 +389,14 @@ class Constructor {
       documentation: Markdown.new,
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+    })
 
     Result.Ok(val)
   }
@@ -459,19 +446,16 @@ class Method {
       documentation: Markdown.new,
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .string('file', fn (v) { val.file = v.to_path })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.string('file', fn (v) { val.file = v.to_path })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.bool('public', fn (v) { val.public = v })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+    })
 
     Result.Ok(val)
   }
@@ -597,13 +581,12 @@ class Implementation {
   fn static parse(parser: mut PullParser) -> Result[Implementation, Error] {
     let imp = Implementation(module: '', name: '', type: '', public: false)
 
-    try parser
-      .object
-      .string('module', fn (v) { imp.module = v })
-      .string('name', fn (v) { imp.name = v })
-      .string('type', fn (v) { imp.type = v })
-      .bool('public', fn (v) { imp.public = v })
-      .require_all
+    try parser.object(fn (o) {
+      o.string('module', fn (v) { imp.module = v })
+      o.string('name', fn (v) { imp.name = v })
+      o.string('type', fn (v) { imp.type = v })
+      o.bool('public', fn (v) { imp.public = v })
+    })
 
     Result.Ok(imp)
   }
@@ -674,36 +657,31 @@ class Class {
       implemented_traits: [],
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.int('kind', fn (v) { val.kind = ClassKind.from(v) })
+      o.bool('public', fn (v) { val.public = v })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .int('kind', fn (v) { val.kind = ClassKind.from(v) })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
+      o.values('constructors', fn (p) {
+        Constructor.parse(p).map(fn (v) { val.constructors.push(v) })
       })
-      .values('constructors', fn {
-        Constructor.parse(parser).map(fn (v) { val.constructors.push(v) })
+      o.values('fields', fn (p) {
+        Field.parse(p).map(fn (v) { val.fields.push(v) })
       })
-      .values('fields', fn {
-        Field.parse(parser).map(fn (v) { val.fields.push(v) })
+      o.values('static_methods', fn (p) {
+        Method.parse(p).map(fn (v) { val.static_methods.push(v) })
       })
-      .values('static_methods', fn {
-        Method.parse(parser).map(fn (v) { val.static_methods.push(v) })
+      o.values('instance_methods', fn (p) {
+        Method.parse(p).map(fn (v) { val.instance_methods.push(v) })
       })
-      .values('instance_methods', fn {
-        Method.parse(parser).map(fn (v) { val.instance_methods.push(v) })
+      o.values('implemented_traits', fn (p) {
+        Implementation.parse(p).map(fn (v) { val.implemented_traits.push(v) })
       })
-      .values('implemented_traits', fn {
-        Implementation.parse(parser).map(fn (v) {
-          val.implemented_traits.push(v)
-        })
-      })
-      .require_all
+    })
 
     val.instance_methods.sort
     val.static_methods.sort
@@ -796,27 +774,24 @@ class Trait {
       implementations: [],
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.bool('public', fn (v) { val.public = v })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
+      o.values('required_methods', fn (p) {
+        Method.parse(p).map(fn (v) { val.required_methods.push(v) })
       })
-      .values('required_methods', fn {
-        Method.parse(parser).map(fn (v) { val.required_methods.push(v) })
+      o.values('default_methods', fn (p) {
+        Method.parse(p).map(fn (v) { val.default_methods.push(v) })
       })
-      .values('default_methods', fn {
-        Method.parse(parser).map(fn (v) { val.default_methods.push(v) })
+      o.values('implementations', fn (p) {
+        Implementation.parse(p).map(fn (v) { val.implementations.push(v) })
       })
-      .values('implementations', fn {
-        Implementation.parse(parser).map(fn (v) { val.implementations.push(v) })
-      })
-      .require_all
+    })
 
     val.required_methods.sort
     val.default_methods.sort
