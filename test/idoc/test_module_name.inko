@@ -12,7 +12,7 @@ fn pub tests(t: mut Tests) {
         documentation: Markdown.new,
         constants: [],
         methods: [],
-        classes: [],
+        types: [],
         traits: [],
       )
     }
@@ -23,7 +23,7 @@ fn pub tests(t: mut Tests) {
         documentation: Markdown.new,
         constants: [],
         methods: [],
-        classes: [],
+        types: [],
         traits: [],
       )
     }

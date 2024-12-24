@@ -11,8 +11,8 @@ fn two_paragraphs -> Markdown {
   Markdown(markdown.Document.parse('first\n\nsecond').get)
 }
 
-fn empty_class(kind: ir.ClassKind) -> ir.Class {
-  ir.Class(
+fn empty_class(kind: ir.TypeKind) -> ir.Type {
+  ir.Type(
     name: 'A',
     location: ir.Location.default,
     kind: kind,
@@ -97,7 +97,7 @@ fn pub tests(t: mut Tests) {
     )
     t.equal(mod.constants.size, 1)
     t.equal(mod.methods.size, 1)
-    t.equal(mod.classes.size, 1)
+    t.equal(mod.types.size, 1)
     t.equal(mod.traits.size, 1)
 
     Result.Ok(nil)
@@ -110,7 +110,7 @@ fn pub tests(t: mut Tests) {
       documentation: Markdown.new,
       constants: [],
       methods: [],
-      classes: [],
+      types: [],
       traits: [],
     )
 
@@ -132,7 +132,7 @@ fn pub tests(t: mut Tests) {
         ),
       ],
       methods: [],
-      classes: [],
+      types: [],
       traits: [],
     )
 
@@ -155,7 +155,7 @@ fn pub tests(t: mut Tests) {
           documentation: Markdown.new,
         ),
       ],
-      classes: [],
+      types: [],
       traits: [],
     )
 
@@ -169,11 +169,11 @@ fn pub tests(t: mut Tests) {
       documentation: Markdown.new,
       constants: [],
       methods: [],
-      classes: [
-        ir.Class(
+      types: [
+        ir.Type(
           name: 'A',
           location: ir.Location.default,
-          kind: ir.ClassKind.Regular,
+          kind: ir.TypeKind.Regular,
           public: true,
           type: 'class A',
           documentation: Markdown.new,
@@ -197,7 +197,7 @@ fn pub tests(t: mut Tests) {
       documentation: Markdown.new,
       constants: [],
       methods: [],
-      classes: [],
+      types: [],
       traits: [
         ir.Trait(
           name: 'A',
@@ -552,78 +552,78 @@ fn pub tests(t: mut Tests) {
     )
   })
 
-  t.test('ClassKind.from', fn (t) {
+  t.test('TypeKind.from', fn (t) {
     t.true(
-      match ir.ClassKind.from(0) {
+      match ir.TypeKind.from(0) {
         case Regular -> true
         case _ -> false
       },
     )
     t.true(
-      match ir.ClassKind.from(1) {
+      match ir.TypeKind.from(1) {
         case Enum -> true
         case _ -> false
       },
     )
     t.true(
-      match ir.ClassKind.from(2) {
+      match ir.TypeKind.from(2) {
         case Async -> true
         case _ -> false
       },
     )
     t.true(
-      match ir.ClassKind.from(3) {
+      match ir.TypeKind.from(3) {
         case Extern -> true
         case _ -> false
       },
     )
     t.true(
-      match ir.ClassKind.from(4) {
+      match ir.TypeKind.from(4) {
         case ValueType -> true
         case _ -> false
       },
     )
     t.true(
-      match ir.ClassKind.from(5) {
+      match ir.TypeKind.from(5) {
         case Atomic -> true
         case _ -> false
       },
     )
   })
 
-  t.test('ClassKind.clone', fn (t) {
+  t.test('TypeKind.clone', fn (t) {
     t.true(
-      match ir.ClassKind.Regular.clone {
+      match ir.TypeKind.Regular.clone {
         case Regular -> true
         case _ -> false
       },
     )
     t.true(
-      match ir.ClassKind.Enum.clone {
+      match ir.TypeKind.Enum.clone {
         case Enum -> true
         case _ -> false
       },
     )
     t.true(
-      match ir.ClassKind.Async.clone {
+      match ir.TypeKind.Async.clone {
         case Async -> true
         case _ -> false
       },
     )
     t.true(
-      match ir.ClassKind.Extern.clone {
+      match ir.TypeKind.Extern.clone {
         case Extern -> true
         case _ -> false
       },
     )
     t.true(
-      match ir.ClassKind.ValueType.clone {
+      match ir.TypeKind.ValueType.clone {
         case ValueType -> true
         case _ -> false
       },
     )
     t.true(
-      match ir.ClassKind.Atomic.clone {
+      match ir.TypeKind.Atomic.clone {
         case Atomic -> true
         case _ -> false
       },
@@ -751,7 +751,7 @@ fn pub tests(t: mut Tests) {
       ',
     )
 
-    let cls = try ir.Class.parse(parser)
+    let cls = try ir.Type.parse(parser)
 
     t.equal(cls.name, 'A')
     t.equal(cls.location.lines, InclusiveRange.new(1, 2))
@@ -778,10 +778,10 @@ fn pub tests(t: mut Tests) {
   })
 
   t.test('Class.cmp', fn (t) {
-    let a = ir.Class(
+    let a = ir.Type(
       name: 'A',
       location: ir.Location.default,
-      kind: ir.ClassKind.Regular,
+      kind: ir.TypeKind.Regular,
       public: true,
       type: 'class A',
       documentation: Markdown.new,
@@ -791,10 +791,10 @@ fn pub tests(t: mut Tests) {
       instance_methods: [],
       implemented_traits: [],
     )
-    let b = ir.Class(
+    let b = ir.Type(
       name: 'B',
       location: ir.Location.default,
-      kind: ir.ClassKind.Regular,
+      kind: ir.TypeKind.Regular,
       public: true,
       type: 'class A',
       documentation: Markdown.new,
@@ -811,10 +811,10 @@ fn pub tests(t: mut Tests) {
   })
 
   t.test('Class.clone', fn (t) {
-    let a = ir.Class(
+    let a = ir.Type(
       name: 'A',
       location: ir.Location.default,
-      kind: ir.ClassKind.Regular,
+      kind: ir.TypeKind.Regular,
       public: true,
       type: 'class A',
       documentation: Markdown.new,
@@ -884,10 +884,10 @@ fn pub tests(t: mut Tests) {
   })
 
   t.test('Class.summary', fn (t) {
-    let cls = ir.Class(
+    let cls = ir.Type(
       name: 'A',
       location: ir.Location.default,
-      kind: ir.ClassKind.Regular,
+      kind: ir.TypeKind.Regular,
       public: true,
       type: 'class A',
       documentation: two_paragraphs,
@@ -905,11 +905,11 @@ fn pub tests(t: mut Tests) {
   })
 
   t.test('Class.value_semantics', fn (t) {
-    let atomic_class = empty_class(ir.ClassKind.Atomic)
-    let async_class = empty_class(ir.ClassKind.Async)
-    let extern_class = empty_class(ir.ClassKind.Extern)
-    let value_class = empty_class(ir.ClassKind.ValueType)
-    let regular_class = empty_class(ir.ClassKind.Regular)
+    let atomic_class = empty_class(ir.TypeKind.Atomic)
+    let async_class = empty_class(ir.TypeKind.Async)
+    let extern_class = empty_class(ir.TypeKind.Extern)
+    let value_class = empty_class(ir.TypeKind.ValueType)
+    let regular_class = empty_class(ir.TypeKind.Regular)
 
     t.true(
       match atomic_class.value_semantics {

@@ -1,13 +1,13 @@
 import idoc.fs (copy_files)
 import idoc.ir
 import idoc.module_name (ModuleName)
-import idoc.page.class (self as cls)
 import idoc.page.constant
 import idoc.page.method
 import idoc.page.module
 import idoc.page.modules (self as mods)
 import idoc.page.search
 import idoc.page.trait (self as trt)
+import idoc.page.type (self as typ)
 import std.fs.path (Path)
 import std.io (Write)
 import std.optparse (Help, Options)
@@ -173,9 +173,9 @@ fn pub run(
       site.generate(html, fn move (f) { page.to_html(f) })
     })
 
-    mod.unique_classes.into_iter.each(fn (c) {
+    mod.unique_types.into_iter.each(fn (c) {
       let html = mod_name.symbol_html_uri(c.name)
-      let page = recover cls.Page.new(mod_name.clone, c, sidebar.clone)
+      let page = recover typ.Page.new(mod_name.clone, c, sidebar.clone)
 
       site.generate(html, fn move (f) { page.to_html(f) })
     })

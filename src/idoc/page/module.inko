@@ -86,7 +86,7 @@ class Page {
             symbols(content, mname, 'Constants', @module.constants)
             symbols(content, mname, 'Methods', @module.methods)
             symbols(content, mname, 'Traits', @module.traits)
-            symbols(content, mname, 'Classes', @module.classes)
+            symbols(content, mname, 'Types', @module.types)
           })
         })
       })

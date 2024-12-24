@@ -34,7 +34,7 @@ fn parse_range(parser: mut PullParser) -> Result[InclusiveRange, Error] {
   Result.Ok(range)
 }
 
-# A type describing a symbol, such as a class or constant.
+# A type describing a symbol, such as a type or constant.
 trait Symbol {
   # Returns the name of the symbol.
   fn name -> String
@@ -108,8 +108,8 @@ class Module {
   # The module methods defined in this module.
   let @methods: Array[Method]
 
-  # The classes defined in this module.
-  let @classes: Array[Class]
+  # The types defined in this module.
+  let @types: Array[Type]
 
   # The traits defined in this module.
   let @traits: Array[Trait]
@@ -162,7 +162,7 @@ class Module {
       documentation: Markdown.new,
       constants: [],
       methods: [],
-      classes: [],
+      types: [],
       traits: [],
     )
 
@@ -183,24 +183,29 @@ class Module {
         Method.parse(parser).map(fn (v) { mod.methods.push(v) })
       })
       .values('classes', fn {
-        Class.parse(parser).map(fn (v) { mod.classes.push(v) })
+        Type.parse(parser).map(fn (v) { mod.types.push(v) })
+      })
+      .values('types', fn {
+        Type.parse(parser).map(fn (v) { mod.types.push(v) })
       })
       .values('traits', fn {
         Trait.parse(parser).map(fn (v) { mod.traits.push(v) })
       })
-      .require_all
+      .require(
+        ['name', 'file', 'documentation', 'constants', 'methods', 'traits'],
+      )
 
     mod.constants.sort
     mod.methods.sort
     mod.traits.sort
-    mod.classes.sort
+    mod.types.sort
     Result.Ok(mod)
   }
 
   fn symbols? -> Bool {
     @constants.size > 0
       or @methods.size > 0
-      or @classes.size > 0
+      or @types.size > 0
       or @traits.size > 0
   }
 
@@ -212,8 +217,8 @@ class Module {
     @methods.iter.map(fn (v) { recover v.clone }).to_array
   }
 
-  fn unique_classes -> Array[uni Class] {
-    @classes.iter.map(fn (v) { recover v.clone }).to_array
+  fn unique_types -> Array[uni Type] {
+    @types.iter.map(fn (v) { recover v.clone }).to_array
   }
 
   fn unique_traits -> Array[uni Trait] {
@@ -322,7 +327,7 @@ impl Symbol for Constant {
   }
 }
 
-# A type describing a field defined in a class.
+# A type describing a field defined in a type.
 class Field {
   # The name of the field, minus the `@` symbol.
   let @name: String
@@ -433,7 +438,7 @@ class Method {
 
   # The file in which the method is defined.
   #
-  # This may differ from the class a method is defined for, as classes can be
+  # This may differ from the type a method is defined for, as types can be
   # reopened in different modules.
   let @file: Path
 
@@ -539,9 +544,9 @@ class MethodWithSource {
   }
 }
 
-# A type describing the kind of a class (e.g. is it a regular class or an
+# A type describing the kind of a type (e.g. is it a regular type or an
 # enum?).
-class enum ClassKind {
+class enum TypeKind {
   case Regular
   case Enum
   case Async
@@ -549,14 +554,14 @@ class enum ClassKind {
   case ValueType
   case Atomic
 
-  fn static from(value: Int) -> ClassKind {
+  fn static from(value: Int) -> TypeKind {
     match value {
-      case 1 -> ClassKind.Enum
-      case 2 -> ClassKind.Async
-      case 3 -> ClassKind.Extern
-      case 4 -> ClassKind.ValueType
-      case 5 -> ClassKind.Atomic
-      case _ -> ClassKind.Regular
+      case 1 -> TypeKind.Enum
+      case 2 -> TypeKind.Async
+      case 3 -> TypeKind.Extern
+      case 4 -> TypeKind.ValueType
+      case 5 -> TypeKind.Atomic
+      case _ -> TypeKind.Regular
     }
   }
 
@@ -568,15 +573,15 @@ class enum ClassKind {
   }
 }
 
-impl Clone[ClassKind] for ClassKind {
-  fn pub clone -> ClassKind {
+impl Clone[TypeKind] for TypeKind {
+  fn pub clone -> TypeKind {
     match self {
-      case Regular -> ClassKind.Regular
-      case Enum -> ClassKind.Enum
-      case Async -> ClassKind.Async
-      case Extern -> ClassKind.Extern
-      case ValueType -> ClassKind.ValueType
-      case Atomic -> ClassKind.Atomic
+      case Regular -> TypeKind.Regular
+      case Enum -> TypeKind.Enum
+      case Async -> TypeKind.Async
+      case Extern -> TypeKind.Extern
+      case ValueType -> TypeKind.ValueType
+      case Atomic -> TypeKind.Atomic
     }
   }
 }
@@ -624,16 +629,16 @@ impl Compare[Implementation] for Implementation {
   }
 }
 
-# A type describing a class.
-class Class {
-  # The name of the class.
+# An Inko type.
+class Type {
+  # The name of the type.
   let @name: String
 
   # The source location at which the symbol is defined.
   let @location: Location
 
-  # What kind of class we're dealing with.
-  let @kind: ClassKind
+  # What kind of type we're dealing with.
+  let @kind: TypeKind
 
   # A flag indicating if the symbol is public or not.
   let @public: Bool
@@ -641,29 +646,29 @@ class Class {
   # A `String` describing the type (signature) of the symbol.
   let @type: String
 
-  # The documentation of the class.
+  # The documentation of the type.
   let @documentation: Markdown
 
-  # The constructors defined for this class, if it's an enum class.
+  # The constructors defined for this type, if it's an enum type.
   let @constructors: Array[Constructor]
 
-  # The fields defined for this class.
+  # The fields defined for this type.
   let @fields: Array[Field]
 
-  # The static methods defined for this class.
+  # The static methods defined for this type.
   let @static_methods: Array[Method]
 
-  # The instance methods defined for this class.
+  # The instance methods defined for this type.
   let @instance_methods: Array[Method]
 
-  # The traits implemented by this class.
+  # The traits implemented by this type.
   let @implemented_traits: Array[Implementation]
 
-  fn static parse(parser: mut PullParser) -> Result[Class, Error] {
-    let val = Class(
+  fn static parse(parser: mut PullParser) -> Result[Type, Error] {
+    let val = Type(
       name: '',
       location: Location.default,
-      kind: ClassKind.Regular,
+      kind: TypeKind.Regular,
       public: false,
       type: '',
       documentation: Markdown.new,
@@ -680,7 +685,7 @@ class Class {
       .key('location', fn {
         Location.parse(parser).map(fn (v) { val.location = v })
       })
-      .int('kind', fn (v) { val.kind = ClassKind.from(v) })
+      .int('kind', fn (v) { val.kind = TypeKind.from(v) })
       .bool('public', fn (v) { val.public = v })
       .string('type', fn (v) { val.type = v })
       .key('documentation', fn {
@@ -712,15 +717,15 @@ class Class {
   }
 }
 
-impl Compare[Class] for Class {
-  fn pub cmp(other: ref Class) -> Ordering {
+impl Compare[Type] for Type {
+  fn pub cmp(other: ref Type) -> Ordering {
     @name.cmp(other.name)
   }
 }
 
-impl Clone[Class] for Class {
-  fn pub clone -> Class {
-    Class(
+impl Clone[Type] for Type {
+  fn pub clone -> Type {
+    Type(
       name: @name,
       location: @location.clone,
       kind: @kind.clone,
@@ -736,7 +741,7 @@ impl Clone[Class] for Class {
   }
 }
 
-impl Symbol for Class {
+impl Symbol for Type {
   fn name -> String {
     @name
   }

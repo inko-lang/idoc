@@ -87,7 +87,7 @@ class Symbol {
       symbols
     })
 
-    symbols = module.classes.iter.reduce(symbols, fn (symbols, c) {
+    symbols = module.types.iter.reduce(symbols, fn (symbols, c) {
       symbols.push(
         recover {
           Symbol(

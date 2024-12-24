@@ -12,35 +12,35 @@ import wobsite.url (file_url)
 class Page {
   let @module: ModuleName
   let @source: String
-  let @class: ir.Class
+  let @type: ir.Type
   let @modules: Array[ModuleName]
 
   fn static new(
     module: ModuleName,
-    node: ir.Class,
+    node: ir.Type,
     modules: Array[ModuleName],
   ) -> Page {
     let src = module.symbol_source_uri(node.name)
 
-    Page(module: module, source: src, class: node, modules: modules)
+    Page(module: module, source: src, type: node, modules: modules)
   }
 
   fn signature_html -> html.Document {
-    highlight_inko(@class.type.to_byte_array)
+    highlight_inko(@type.type.to_byte_array)
   }
 
   fn documentation_html -> html.Document {
-    @class.documentation.to_html(increment_headings: 1)
+    @type.documentation.to_html(increment_headings: 1)
   }
 
   fn to_html(files: ref Files) -> Result[String, String] {
-    let static_methods = try ir.MethodWithSource.array_of(@class.static_methods)
+    let static_methods = try ir.MethodWithSource.array_of(@type.static_methods)
     let instance_methods = try ir.MethodWithSource.array_of(
-      @class.instance_methods,
+      @type.instance_methods,
     )
     let current_url = file_url(files.source, files.source.join(@source))
     let result = html.Document.html('en', fn (h) {
-      h.add(head(current_url, title: '${@module.name}.${@class.name}'))
+      h.add(head(current_url, title: '${@module.name}.${@type.name}'))
 
       h.body.with(fn (body) {
         header(body, current_url)
@@ -54,12 +54,12 @@ class Page {
               page_title(h, fn (t) {
                 link_to(t, current_url, @module.link, text: @module.name)
                 t.text('.')
-                t.text(@class.name)
+                t.text(@type.name)
               })
 
-              if @class.public.false? { private(h) }
+              if @type.public.false? { private(h) }
 
-              match @class.kind {
+              match @type.kind {
                 case Atomic or Async -> atomic(h)
                 case ValueType or Extern -> value_type(h)
                 case _ -> {}
@@ -69,10 +69,10 @@ class Page {
             content.append(signature_html)
             content.append(documentation_html)
 
-            if @class.fields.size > 0 and @class.kind.enum?.false? {
+            if @type.fields.size > 0 and @type.kind.enum?.false? {
               content.h2.text('Fields')
 
-              @class.fields.iter.each(fn (sym) {
+              @type.fields.iter.each(fn (sym) {
                 content.header.with(fn (h) {
                   h.h3.attr('id', 'field.${sym.name}').text(sym.name)
 
@@ -85,10 +85,10 @@ class Page {
               })
             }
 
-            if @class.constructors.size > 0 {
+            if @type.constructors.size > 0 {
               content.h2.text('Constructors')
 
-              @class.constructors.iter.each(fn (sym) {
+              @type.constructors.iter.each(fn (sym) {
                 content.header.with(fn (h) {
                   h.h3.attr('id', 'constructor.${sym.name}').text(sym.name)
                 })
@@ -99,23 +99,23 @@ class Page {
               })
             }
 
-            if @class.static_methods.size > 0 {
+            if @type.static_methods.size > 0 {
               content.h2.text('Static methods')
               methods(content, static_methods)
             }
 
-            if @class.instance_methods.size > 0 {
+            if @type.instance_methods.size > 0 {
               content.h2.text('Instance methods')
               methods(content, instance_methods)
             }
 
-            if @class.implemented_traits.size > 0 {
+            if @type.implemented_traits.size > 0 {
               content.h2.text('Implemented traits')
               implementations(
                 content,
                 current_url,
                 @modules,
-                @class.implemented_traits,
+                @type.implemented_traits,
               )
             }
           })
