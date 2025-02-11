@@ -9,7 +9,7 @@ import idoc.url (relative_url)
 import wobsite (Files, UpdateAssetLinks)
 import wobsite.url (file_url)
 
-class enum ValueSemantics {
+type enum ValueSemantics {
   case Regular
   case Atomic
   case Value
@@ -50,7 +50,7 @@ fn symbols[I: ir.Symbol](
   })
 }
 
-class Page {
+type Page {
   let @source: String
   let @modules: Array[ModuleName]
   let @module: ir.Module

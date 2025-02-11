@@ -9,7 +9,7 @@ import idoc.module_name (ModuleName)
 import wobsite (Files, UpdateAssetLinks)
 import wobsite.url (file_url)
 
-class Page {
+type Page {
   let @module: ModuleName
   let @source: String
   let @type: ir.Type

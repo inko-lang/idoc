@@ -67,7 +67,7 @@ fn head(page: String, title: String) -> Element {
   # the search cache.
   head.attr(
     'data-search',
-    relative_url(page, '/search.json') + '?t=${DateTime.new.to_int}',
+    relative_url(page, '/search.json') + '?t=${DateTime.utc.to_int}',
   )
 
   head

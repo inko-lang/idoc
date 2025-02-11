@@ -1,15 +1,16 @@
 import idoc.markdown (Markdown)
 import markdown
+import std.io (Buffer)
 import std.json (Json, PullParser)
 import std.test (Tests)
 
 fn parse(string: String) -> Markdown {
-  Markdown.parse(PullParser.new(Json.String(string).to_string)).get
+  Markdown.parse(PullParser.new(Buffer.new(Json.String(string).to_string))).get
 }
 
 fn pub tests(t: mut Tests) {
   t.ok('Markdown.parse', fn (t) {
-    let parser = PullParser.new('"hello **world**"')
+    let parser = PullParser.new(Buffer.new('"hello **world**"'))
     let md = try Markdown.parse(parser)
 
     t.equal(

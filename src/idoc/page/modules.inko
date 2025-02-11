@@ -13,7 +13,7 @@ import wobsite.url (file_url)
 
 let TITLE = 'Documentation'
 
-class Module {
+type Module {
   let @name: ModuleName
   let @summary: Markdown
 
@@ -26,7 +26,7 @@ class Module {
   }
 }
 
-class Page {
+type Page {
   let @directory: Path
   let @modules: Array[Module]
 

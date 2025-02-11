@@ -3,35 +3,56 @@ import builder.html
 import idoc.fs (read_source_code)
 import idoc.markdown (Markdown)
 import std.clone (Clone)
-import std.cmp (Compare, Ordering)
+import std.cmp (Compare, Equal, Ordering)
+import std.fmt (Format, Formatter)
 import std.fs.file (ReadOnlyFile)
 import std.fs.path (Path)
+import std.io (Read)
 import std.json (Error, ErrorKind, PullParser)
-import std.range (InclusiveRange)
 import std.sync (Channel)
 
 let META = '$meta.json'
 
-fn read_file(path: Path) -> Result[ByteArray, Error] {
-  let bytes = ByteArray.new
+type Range {
+  let mut @start: Int
+  let mut @end: Int
 
-  try ReadOnlyFile.new(path).then(fn (f) { f.read_all(bytes) }).map_error(
-    fn (e) { Error(kind: ErrorKind.Read(e), offset: 0) },
-  )
-
-  Result.Ok(bytes)
+  fn static new(start: Int, end: Int) -> Range {
+    Range(start: start, end: end)
+  }
 }
 
-# Parses a stream of bytes into an `InclusiveRange`.
-fn parse_range(parser: mut PullParser) -> Result[InclusiveRange, Error] {
-  let range = InclusiveRange.new(1, 1)
+impl Clone for Range {
+  fn pub clone -> Range {
+    Range(start: @start, end: @end)
+  }
+}
 
-  parser
-    .object
-    .int('start', fn (v) { range.start = v })
-    .int('end', fn (v) { range.end = v })
-    .require_all
-  Result.Ok(range)
+impl Equal for Range {
+  fn pub ==(other: ref Range) -> Bool {
+    @start == other.start and @end == other.end
+  }
+}
+
+impl Format for Range {
+  fn pub fmt(formatter: mut Formatter) {
+    @start.fmt(formatter)
+    formatter.write(' to ')
+    @end.fmt(formatter)
+  }
+}
+
+# Parses a stream of bytes into a `Range`.
+fn parse_range[T: mut + Read](
+  parser: mut PullParser[T],
+  range: mut Range,
+) -> Result[Nil, Error] {
+  try parser.object(fn (o) {
+    o.int('start', fn (v) { range.start = v })
+    o.int('end', fn (v) { range.end = v })
+  })
+
+  Result.Ok(nil)
 }
 
 # A type describing a symbol, such as a type or constant.
@@ -49,70 +70,67 @@ trait Symbol {
   fn value_semantics -> ValueSemantics
 }
 
-class enum ValueSemantics {
+type enum ValueSemantics {
   case Regular
   case Atomic
   case Value
 }
 
 # A type describing the source location of a symbol.
-class Location {
+type Location {
   # The lines the symbol covers.
-  let @lines: InclusiveRange
+  let mut @lines: Range
 
   # The columns the symbol covers.
   #
   # The range is a range of extended grapheme clusters, not bytes.
-  let @columns: InclusiveRange
+  let mut @columns: Range
 
   fn static default -> Location {
-    Location(InclusiveRange.new(1, 1), InclusiveRange.new(1, 1))
+    Location(Range.new(1, 1), Range.new(1, 1))
   }
 
-  fn static parse(parser: mut PullParser) -> Result[Location, Error] {
-    let location = Location(1.to(1), 1.to(1))
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+    location: mut Location,
+  ) -> Result[Nil, Error] {
+    try parser.object(fn (o) {
+      o.key('lines', fn (p) { parse_range(p, location.lines) })
+      o.key('columns', fn (p) { parse_range(p, location.columns) })
+    })
 
-    parser
-      .object
-      .key('lines', fn {
-        parse_range(parser).map(fn (v) { location.lines = v })
-      })
-      .key('columns', fn {
-        parse_range(parser).map(fn (v) { location.columns = v })
-      })
-      .require_all
-    Result.Ok(location)
+    Result.Ok(nil)
   }
 }
 
-impl Clone[Location] for Location {
+impl Clone for Location {
   fn pub clone -> Location {
     Location(lines: @lines.clone, columns: @columns.clone)
   }
 }
 
 # A type describing a single module and its contents.
-class Module {
+type Module {
   # The fully qualified name of the module (e.g. `std.string`).
-  let @name: String
+  let mut @name: String
 
   # The file path to the source code of the module.
-  let @file: Path
+  let mut @file: Path
 
   # The documentation of the module.
-  let @documentation: Markdown
+  let mut @documentation: Markdown
 
   # The constants defined in this module.
-  let @constants: Array[Constant]
+  let mut @constants: Array[Constant]
 
   # The module methods defined in this module.
-  let @methods: Array[Method]
+  let mut @methods: Array[Method]
 
   # The types defined in this module.
-  let @types: Array[Type]
+  let mut @types: Array[Type]
 
   # The traits defined in this module.
-  let @traits: Array[Trait]
+  let mut @traits: Array[Trait]
 
   fn static parse_all(
     directory: ref Path,
@@ -166,34 +184,31 @@ class Module {
       traits: [],
     )
 
-    let bytes = try read_file(path)
-    let parser = PullParser.new(bytes)
+    let file = try ReadOnlyFile.new(path).map_error(fn (e) {
+      Error(kind: ErrorKind.Read(e), offset: 0)
+    })
 
-    try parser
-      .object
-      .string('name', fn (v) { mod.name = v })
-      .string('file', fn (v) { mod.file = v.to_path })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { mod.documentation = v })
+    let parser = PullParser.new(file)
+
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { mod.name = v })
+      o.string('file', fn (v) { mod.file = v.to_path })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { mod.documentation = v })
       })
-      .values('constants', fn {
-        Constant.parse(parser).map(fn (v) { mod.constants.push(v) })
+      o.values('constants', fn (p) {
+        Constant.parse(p).map(fn (v) { mod.constants.push(v) })
       })
-      .values('methods', fn {
-        Method.parse(parser).map(fn (v) { mod.methods.push(v) })
+      o.values('methods', fn (p) {
+        Method.parse(p).map(fn (v) { mod.methods.push(v) })
       })
-      .values('classes', fn {
-        Type.parse(parser).map(fn (v) { mod.types.push(v) })
+      o.values('types', fn (p) {
+        Type.parse(p).map(fn (v) { mod.types.push(v) })
       })
-      .values('types', fn {
-        Type.parse(parser).map(fn (v) { mod.types.push(v) })
+      o.values('traits', fn (p) {
+        Trait.parse(p).map(fn (v) { mod.traits.push(v) })
       })
-      .values('traits', fn {
-        Trait.parse(parser).map(fn (v) { mod.traits.push(v) })
-      })
-      .require(
-        ['name', 'file', 'documentation', 'constants', 'methods', 'traits'],
-      )
+    })
 
     mod.constants.sort
     mod.methods.sort
@@ -227,45 +242,48 @@ class Module {
 }
 
 # A type describing the documentation metadata file.
-class Metadata {
+type Metadata {
   # The README of the project, if any was found.
-  let @readme: Markdown
+  let mut @readme: Markdown
 
   fn static parse(directory: ref Path) -> Result[Metadata, Error] {
     let path = directory.join(META)
-    let bytes = try read_file(path)
-    let parser = PullParser.new(bytes)
+    let file = try ReadOnlyFile.new(path).map_error(fn (e) {
+      Error(kind: ErrorKind.Read(e), offset: 0)
+    })
+    let parser = PullParser.new(file)
     let meta = Metadata(readme: Markdown.new)
 
-    try parser
-      .object
-      .key('readme', fn {
-        Markdown.parse(parser).map(fn (v) { meta.readme = v })
+    try parser.object(fn (o) {
+      o.key('readme', fn (p) {
+        Markdown.parse(p).map(fn (v) { meta.readme = v })
       })
-      .require_all
+    })
 
     Result.Ok(meta)
   }
 }
 
 # A type describing a constant.
-class Constant {
+type Constant {
   # The name of the constant (e.g. `NUMBER`).
-  let @name: String
+  let mut @name: String
 
   # The source location at which the symbol is defined.
-  let @location: Location
+  let mut @location: Location
 
   # A flag indicating if the symbol is public or not.
-  let @public: Bool
+  let mut @public: Bool
 
   # A `String` describing the type (signature) of the symbol.
-  let @type: String
+  let mut @type: String
 
   # The documentation of the symbol.
-  let @documentation: Markdown
+  let mut @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Constant, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Constant, Error] {
     let val = Constant(
       name: '',
       location: Location.default,
@@ -274,30 +292,27 @@ class Constant {
       documentation: Markdown.new,
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.bool('public', fn (v) { val.public = v })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+    })
 
     Result.Ok(val)
   }
 }
 
-impl Compare[Constant] for Constant {
+impl Compare for Constant {
   fn pub cmp(other: ref Constant) -> Ordering {
     @name.cmp(other.name)
   }
 }
 
-impl Clone[Constant] for Constant {
+impl Clone for Constant {
   fn pub clone -> Constant {
     Constant(
       name: @name,
@@ -328,23 +343,25 @@ impl Symbol for Constant {
 }
 
 # A type describing a field defined in a type.
-class Field {
+type Field {
   # The name of the field, minus the `@` symbol.
-  let @name: String
+  let mut @name: String
 
   # The source location at which the symbol is defined.
-  let @location: Location
+  let mut @location: Location
 
   # A flag indicating if the symbol is public or not.
-  let @public: Bool
+  let mut @public: Bool
 
   # A `String` describing the type (signature) of the symbol.
-  let @type: String
+  let mut @type: String
 
   # The documentation of the symbol.
-  let @documentation: Markdown
+  let mut @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Field, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Field, Error] {
     let val = Field(
       name: '',
       location: Location.default,
@@ -353,24 +370,21 @@ class Field {
       documentation: Markdown.new,
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.bool('public', fn (v) { val.public = v })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+    })
 
     Result.Ok(val)
   }
 }
 
-impl Clone[Field] for Field {
+impl Clone for Field {
   fn pub clone -> Field {
     Field(
       name: @name,
@@ -383,20 +397,22 @@ impl Clone[Field] for Field {
 }
 
 # A type describing a constructor of an enum.
-class Constructor {
+type Constructor {
   # The name of the constructor.
-  let @name: String
+  let mut @name: String
 
   # The source location at which the symbol is defined.
-  let @location: Location
+  let mut @location: Location
 
   # A `String` describing the type (signature) of the symbol.
-  let @type: String
+  let mut @type: String
 
   # The documentation of the symbol.
-  let @documentation: Markdown
+  let mut @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Constructor, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Constructor, Error] {
     let val = Constructor(
       name: '',
       location: Location.default,
@@ -404,23 +420,20 @@ class Constructor {
       documentation: Markdown.new,
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+    })
 
     Result.Ok(val)
   }
 }
 
-impl Clone[Constructor] for Constructor {
+impl Clone for Constructor {
   fn pub clone -> Constructor {
     Constructor(
       name: @name,
@@ -432,29 +445,31 @@ impl Clone[Constructor] for Constructor {
 }
 
 # A type describing a single method.
-class Method {
+type Method {
   # The name of the method.
-  let @name: String
+  let mut @name: String
 
   # The file in which the method is defined.
   #
   # This may differ from the type a method is defined for, as types can be
   # reopened in different modules.
-  let @file: Path
+  let mut @file: Path
 
   # The source location at which the symbol is defined.
-  let @location: Location
+  let mut @location: Location
 
   # A flag indicating if the symbol is public or not.
-  let @public: Bool
+  let mut @public: Bool
 
   # A `String` describing the type (signature) of the symbol.
-  let @type: String
+  let mut @type: String
 
   # The documentation of the symbol.
-  let @documentation: Markdown
+  let mut @documentation: Markdown
 
-  fn static parse(parser: mut PullParser) -> Result[Method, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Method, Error] {
     let val = Method(
       name: '',
       file: ''.to_path,
@@ -464,25 +479,22 @@ class Method {
       documentation: Markdown.new,
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .string('file', fn (v) { val.file = v.to_path })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.string('file', fn (v) { val.file = v.to_path })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.bool('public', fn (v) { val.public = v })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
-      })
-      .require_all
+    })
 
     Result.Ok(val)
   }
 }
 
-impl Clone[Method] for Method {
+impl Clone for Method {
   fn pub clone -> Method {
     Method(
       name: @name,
@@ -495,7 +507,7 @@ impl Clone[Method] for Method {
   }
 }
 
-impl Compare[Method] for Method {
+impl Compare for Method {
   fn pub cmp(other: ref Method) -> Ordering {
     @name.cmp(other.name)
   }
@@ -520,7 +532,7 @@ impl Symbol for Method {
 }
 
 # A reference to a `Method`, along with its source code.
-class MethodWithSource {
+type MethodWithSource {
   let @node: ref Method
   let @source: ByteArray
 
@@ -546,7 +558,7 @@ class MethodWithSource {
 
 # A type describing the kind of a type (e.g. is it a regular type or an
 # enum?).
-class enum TypeKind {
+type enum TypeKind {
   case Regular
   case Enum
   case Async
@@ -573,7 +585,7 @@ class enum TypeKind {
   }
 }
 
-impl Clone[TypeKind] for TypeKind {
+impl Clone for TypeKind {
   fn pub clone -> TypeKind {
     match self {
       case Regular -> TypeKind.Regular
@@ -586,41 +598,42 @@ impl Clone[TypeKind] for TypeKind {
   }
 }
 
-class Implementation {
+type Implementation {
   # The fully qualified name of the module in which the trait is defined.
-  let @module: String
+  let mut @module: String
 
   # The name of the symbol the implementation is for.
-  let @name: String
+  let mut @name: String
 
   # The type signature of the implemented trait.
-  let @type: String
+  let mut @type: String
 
   # A boolean indicating if the implemented trait is public or not.
-  let @public: Bool
+  let mut @public: Bool
 
-  fn static parse(parser: mut PullParser) -> Result[Implementation, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Implementation, Error] {
     let imp = Implementation(module: '', name: '', type: '', public: false)
 
-    try parser
-      .object
-      .string('module', fn (v) { imp.module = v })
-      .string('name', fn (v) { imp.name = v })
-      .string('type', fn (v) { imp.type = v })
-      .bool('public', fn (v) { imp.public = v })
-      .require_all
+    try parser.object(fn (o) {
+      o.string('module', fn (v) { imp.module = v })
+      o.string('name', fn (v) { imp.name = v })
+      o.string('type', fn (v) { imp.type = v })
+      o.bool('public', fn (v) { imp.public = v })
+    })
 
     Result.Ok(imp)
   }
 }
 
-impl Clone[Implementation] for Implementation {
+impl Clone for Implementation {
   fn pub clone -> Implementation {
     Implementation(module: @module, name: @name, type: @type, public: @public)
   }
 }
 
-impl Compare[Implementation] for Implementation {
+impl Compare for Implementation {
   fn pub cmp(other: ref Implementation) -> Ordering {
     match @module.cmp(other.module) {
       case Equal -> @name.cmp(other.name)
@@ -629,25 +642,25 @@ impl Compare[Implementation] for Implementation {
   }
 }
 
-# An Inko type.
-class Type {
+# A type describing a type.
+type Type {
   # The name of the type.
-  let @name: String
+  let mut @name: String
 
   # The source location at which the symbol is defined.
-  let @location: Location
+  let mut @location: Location
 
   # What kind of type we're dealing with.
-  let @kind: TypeKind
+  let mut @kind: TypeKind
 
   # A flag indicating if the symbol is public or not.
-  let @public: Bool
+  let mut @public: Bool
 
   # A `String` describing the type (signature) of the symbol.
-  let @type: String
+  let mut @type: String
 
   # The documentation of the type.
-  let @documentation: Markdown
+  let mut @documentation: Markdown
 
   # The constructors defined for this type, if it's an enum type.
   let @constructors: Array[Constructor]
@@ -664,7 +677,9 @@ class Type {
   # The traits implemented by this type.
   let @implemented_traits: Array[Implementation]
 
-  fn static parse(parser: mut PullParser) -> Result[Type, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Type, Error] {
     let val = Type(
       name: '',
       location: Location.default,
@@ -679,36 +694,31 @@ class Type {
       implemented_traits: [],
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.int('kind', fn (v) { val.kind = TypeKind.from(v) })
+      o.bool('public', fn (v) { val.public = v })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .int('kind', fn (v) { val.kind = TypeKind.from(v) })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
+      o.values('constructors', fn (p) {
+        Constructor.parse(p).map(fn (v) { val.constructors.push(v) })
       })
-      .values('constructors', fn {
-        Constructor.parse(parser).map(fn (v) { val.constructors.push(v) })
+      o.values('fields', fn (p) {
+        Field.parse(p).map(fn (v) { val.fields.push(v) })
       })
-      .values('fields', fn {
-        Field.parse(parser).map(fn (v) { val.fields.push(v) })
+      o.values('static_methods', fn (p) {
+        Method.parse(p).map(fn (v) { val.static_methods.push(v) })
       })
-      .values('static_methods', fn {
-        Method.parse(parser).map(fn (v) { val.static_methods.push(v) })
+      o.values('instance_methods', fn (p) {
+        Method.parse(p).map(fn (v) { val.instance_methods.push(v) })
       })
-      .values('instance_methods', fn {
-        Method.parse(parser).map(fn (v) { val.instance_methods.push(v) })
+      o.values('implemented_traits', fn (p) {
+        Implementation.parse(p).map(fn (v) { val.implemented_traits.push(v) })
       })
-      .values('implemented_traits', fn {
-        Implementation.parse(parser).map(fn (v) {
-          val.implemented_traits.push(v)
-        })
-      })
-      .require_all
+    })
 
     val.instance_methods.sort
     val.static_methods.sort
@@ -717,13 +727,13 @@ class Type {
   }
 }
 
-impl Compare[Type] for Type {
+impl Compare for Type {
   fn pub cmp(other: ref Type) -> Ordering {
     @name.cmp(other.name)
   }
 }
 
-impl Clone[Type] for Type {
+impl Clone for Type {
   fn pub clone -> Type {
     Type(
       name: @name,
@@ -764,21 +774,21 @@ impl Symbol for Type {
 }
 
 # A type describing a trait.
-class Trait {
+type Trait {
   # The name of the trait.
-  let @name: String
+  let mut @name: String
 
   # The source location at which the symbol is defined.
-  let @location: Location
+  let mut @location: Location
 
   # A flag indicating if the symbol is public or not.
-  let @public: Bool
+  let mut @public: Bool
 
   # A `String` describing the type (signature) of the symbol.
-  let @type: String
+  let mut @type: String
 
   # The documentation of the symbol.
-  let @documentation: Markdown
+  let mut @documentation: Markdown
 
   # The required methods defined for this trait.
   let @required_methods: Array[Method]
@@ -789,7 +799,9 @@ class Trait {
   # The implementations of this trait.
   let @implementations: Array[Implementation]
 
-  fn static parse(parser: mut PullParser) -> Result[Trait, Error] {
+  fn static parse[T: mut + Read](
+    parser: mut PullParser[T],
+  ) -> Result[Trait, Error] {
     let val = Trait(
       name: '',
       location: Location.default,
@@ -801,27 +813,24 @@ class Trait {
       implementations: [],
     )
 
-    try parser
-      .object
-      .string('name', fn (v) { val.name = v })
-      .key('location', fn {
-        Location.parse(parser).map(fn (v) { val.location = v })
+    try parser.object(fn (o) {
+      o.string('name', fn (v) { val.name = v })
+      o.key('location', fn (p) { Location.parse(p, val.location) })
+      o.bool('public', fn (v) { val.public = v })
+      o.string('type', fn (v) { val.type = v })
+      o.key('documentation', fn (p) {
+        Markdown.parse(p).map(fn (v) { val.documentation = v })
       })
-      .bool('public', fn (v) { val.public = v })
-      .string('type', fn (v) { val.type = v })
-      .key('documentation', fn {
-        Markdown.parse(parser).map(fn (v) { val.documentation = v })
+      o.values('required_methods', fn (p) {
+        Method.parse(p).map(fn (v) { val.required_methods.push(v) })
       })
-      .values('required_methods', fn {
-        Method.parse(parser).map(fn (v) { val.required_methods.push(v) })
+      o.values('default_methods', fn (p) {
+        Method.parse(p).map(fn (v) { val.default_methods.push(v) })
       })
-      .values('default_methods', fn {
-        Method.parse(parser).map(fn (v) { val.default_methods.push(v) })
+      o.values('implementations', fn (p) {
+        Implementation.parse(p).map(fn (v) { val.implementations.push(v) })
       })
-      .values('implementations', fn {
-        Implementation.parse(parser).map(fn (v) { val.implementations.push(v) })
-      })
-      .require_all
+    })
 
     val.required_methods.sort
     val.default_methods.sort
@@ -830,13 +839,13 @@ class Trait {
   }
 }
 
-impl Compare[Trait] for Trait {
+impl Compare for Trait {
   fn pub cmp(other: ref Trait) -> Ordering {
     @name.cmp(other.name)
   }
 }
 
-impl Clone[Trait] for Trait {
+impl Clone for Trait {
   fn pub clone -> Trait {
     Trait(
       name: @name,
@@ -870,7 +879,7 @@ impl Symbol for Trait {
 }
 
 # A process that parses a documentation JSON file into a `Module`.
-class async Parser {
+type async Parser {
   fn async parse(
     input: uni Path,
     output: uni Channel[uni Result[Module, (Path, Error)]],

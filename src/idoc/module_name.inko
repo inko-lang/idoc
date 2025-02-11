@@ -3,7 +3,7 @@ import std.clone (Clone)
 import std.cmp (Compare, Ordering)
 import std.string (StringBuffer)
 
-class ModuleName {
+type ModuleName {
   let @name: String
   let @uri: String
 
@@ -54,13 +54,13 @@ class ModuleName {
   }
 }
 
-impl Clone[ModuleName] for ModuleName {
+impl Clone for ModuleName {
   fn pub clone -> ModuleName {
     ModuleName(name: @name, uri: @uri)
   }
 }
 
-impl Compare[ModuleName] for ModuleName {
+impl Compare for ModuleName {
   fn pub cmp(other: ref ModuleName) -> Ordering {
     @name.cmp(other.name)
   }

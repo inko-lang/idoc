@@ -28,7 +28,7 @@ let OUTPUT_DIR = 'build/idoc'
 # (e.g. by setting it to `/usr/share/idoc/assets`).
 let pub ASSETS = 'assets'
 
-fn usage(options: ref Options, output: mut Write) {
+fn usage[T: mut + Write](options: ref Options, output: mut T) {
   let help = Help
     .new('idoc')
     .usage('[OPTIONS]')
@@ -81,10 +81,10 @@ fn generate_json(
   }
 }
 
-fn pub run(
+fn pub run[T: mut + Write](
   arguments: Array[String],
   working_directory: ref Path,
-  output: mut Write,
+  output: mut T,
 ) -> Result[Nil, String] {
   let opts = Options.new
 
@@ -143,12 +143,17 @@ fn pub run(
   let mods_iter = modules.into_iter
 
   loop {
-    let mod = match mods_iter.next {
+    let mut mod = match mods_iter.next {
       case Some(v) -> v
       case _ -> break
     }
 
-    search_page.add_symbols(search.Symbol.array_for(mod))
+    mod = recover {
+      let mod = recover mod
+
+      search_page.add_symbols(search.Symbol.array_for(mod))
+      mod
+    }
 
     let mod_name = ModuleName.new(mod.name)
     let file = mod.file.clone

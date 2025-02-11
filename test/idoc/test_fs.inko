@@ -1,4 +1,5 @@
 import idoc.fs
+import idoc.ir (Range)
 import std.env
 import std.test (Tests)
 
@@ -7,11 +8,11 @@ fn pub tests(t: mut Tests) {
     let path = './fixtures/source.inko'.to_path
 
     t.equal(
-      fs.read_source_code(path, lines: 2.to(3), dedent: 0),
+      fs.read_source_code(path, lines: Range.new(2, 3), dedent: 0),
       Result.Ok('  200\n  300'.to_byte_array),
     )
     t.equal(
-      fs.read_source_code(path, lines: 2.to(3), dedent: 2),
+      fs.read_source_code(path, lines: Range.new(2, 3), dedent: 2),
       Result.Ok('200\n300'.to_byte_array),
     )
   })

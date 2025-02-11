@@ -2,8 +2,8 @@ import idoc.ir
 import idoc.markdown (Markdown)
 import markdown
 import std.cmp (Ordering)
+import std.io (Buffer)
 import std.json (PullParser)
-import std.range (InclusiveRange)
 import std.sync (Channel)
 import std.test (Tests)
 
@@ -11,7 +11,11 @@ fn two_paragraphs -> Markdown {
   Markdown(markdown.Document.parse('first\n\nsecond').get)
 }
 
-fn empty_class(kind: ir.TypeKind) -> ir.Type {
+fn pull(input: String) -> PullParser[Buffer[String]] {
+  PullParser.new(Buffer.new(input))
+}
+
+fn empty_type(kind: ir.TypeKind) -> ir.Type {
   ir.Type(
     name: 'A',
     location: ir.Location.default,
@@ -29,35 +33,40 @@ fn empty_class(kind: ir.TypeKind) -> ir.Type {
 
 fn pub tests(t: mut Tests) {
   t.test('parse_range', fn (t) {
-    let parser = PullParser.new('{"start":2,"end":3}')
-    let res = ir.parse_range(parser)
+    let parser = pull('{"start":2,"end":3}')
+    let range = ir.Range.new(2, 3)
+    let res = ir.parse_range(parser, range)
 
-    t.equal(res, Result.Ok(InclusiveRange.new(2, 3)))
+    t.true(res.ok?)
+    t.equal(range.start, 2)
+    t.equal(range.end, 3)
   })
 
   t.test('Location.default', fn (t) {
     let loc = ir.Location.default
 
-    t.equal(loc.lines, InclusiveRange.new(1, 1))
-    t.equal(loc.columns, InclusiveRange.new(1, 1))
+    t.equal(loc.lines, ir.Range.new(1, 1))
+    t.equal(loc.columns, ir.Range.new(1, 1))
   })
 
   t.ok('Location.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '{ "lines": { "start": 1, "end": 2 }, "columns": { "start": 3, "end": 4 } }',
     )
 
-    let loc = try ir.Location.parse(parser)
+    let loc = ir.Location.default
 
-    t.equal(loc.lines, InclusiveRange.new(1, 2))
-    t.equal(loc.columns, InclusiveRange.new(3, 4))
+    try ir.Location.parse(parser, loc)
+
+    t.equal(loc.lines, ir.Range.new(1, 2))
+    t.equal(loc.columns, ir.Range.new(3, 4))
     Result.Ok(nil)
   })
 
   t.test('Location.clone', fn (t) {
     let loc1 = ir.Location(
-      lines: InclusiveRange.new(1, 2),
-      columns: InclusiveRange.new(3, 4),
+      lines: ir.Range.new(1, 2),
+      columns: ir.Range.new(3, 4),
     )
     let loc2 = loc1.clone
 
@@ -228,7 +237,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Constant.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "A",
@@ -246,8 +255,8 @@ fn pub tests(t: mut Tests) {
     let const = try ir.Constant.parse(parser)
 
     t.equal(const.name, 'A')
-    t.equal(const.location.lines, InclusiveRange.new(1, 2))
-    t.equal(const.location.columns, InclusiveRange.new(1, 2))
+    t.equal(const.location.lines, ir.Range.new(1, 2))
+    t.equal(const.location.columns, ir.Range.new(1, 2))
     t.equal(const.public, true)
     t.equal(const.type, 'Int')
     t.equal(
@@ -354,7 +363,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Field.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "foo",
@@ -372,8 +381,8 @@ fn pub tests(t: mut Tests) {
     let field = try ir.Field.parse(parser)
 
     t.equal(field.name, 'foo')
-    t.equal(field.location.lines, InclusiveRange.new(1, 2))
-    t.equal(field.location.columns, InclusiveRange.new(1, 2))
+    t.equal(field.location.lines, ir.Range.new(1, 2))
+    t.equal(field.location.columns, ir.Range.new(1, 2))
     t.equal(field.public, true)
     t.equal(field.type, 'Int')
     t.equal(
@@ -401,7 +410,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Constructor.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "A",
@@ -418,8 +427,8 @@ fn pub tests(t: mut Tests) {
     let const = try ir.Constructor.parse(parser)
 
     t.equal(const.name, 'A')
-    t.equal(const.location.lines, InclusiveRange.new(1, 2))
-    t.equal(const.location.columns, InclusiveRange.new(1, 2))
+    t.equal(const.location.lines, ir.Range.new(1, 2))
+    t.equal(const.location.columns, ir.Range.new(1, 2))
     t.equal(const.type, 'Int')
     t.equal(
       const.documentation.to_html(increment_headings: 0).to_string,
@@ -445,7 +454,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Method.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "foo",
@@ -464,8 +473,8 @@ fn pub tests(t: mut Tests) {
 
     t.equal(method.name, 'foo')
     t.equal(method.file, 'test.inko'.to_path)
-    t.equal(method.location.lines, InclusiveRange.new(1, 2))
-    t.equal(method.location.columns, InclusiveRange.new(1, 2))
+    t.equal(method.location.lines, ir.Range.new(1, 2))
+    t.equal(method.location.columns, ir.Range.new(1, 2))
     t.equal(method.public, true)
     t.equal(method.type, 'fn foo')
     t.equal(
@@ -631,7 +640,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Implementation.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "module": "std.foo",
@@ -677,8 +686,8 @@ fn pub tests(t: mut Tests) {
     t.equal(a.cmp(a), Ordering.Equal)
   })
 
-  t.ok('Class.parse', fn (t) {
-    let parser = PullParser.new(
+  t.ok('Type.parse', fn (t) {
+    let parser = pull(
       '
       {
         "name": "A",
@@ -754,8 +763,8 @@ fn pub tests(t: mut Tests) {
     let cls = try ir.Type.parse(parser)
 
     t.equal(cls.name, 'A')
-    t.equal(cls.location.lines, InclusiveRange.new(1, 2))
-    t.equal(cls.location.columns, InclusiveRange.new(1, 2))
+    t.equal(cls.location.lines, ir.Range.new(1, 2))
+    t.equal(cls.location.columns, ir.Range.new(1, 2))
     t.true(
       match cls.kind {
         case Regular -> true
@@ -777,7 +786,7 @@ fn pub tests(t: mut Tests) {
     Result.Ok(nil)
   })
 
-  t.test('Class.cmp', fn (t) {
+  t.test('Type.cmp', fn (t) {
     let a = ir.Type(
       name: 'A',
       location: ir.Location.default,
@@ -810,7 +819,7 @@ fn pub tests(t: mut Tests) {
     t.equal(a.cmp(a), Ordering.Equal)
   })
 
-  t.test('Class.clone', fn (t) {
+  t.test('Type.clone', fn (t) {
     let a = ir.Type(
       name: 'A',
       location: ir.Location.default,
@@ -883,7 +892,7 @@ fn pub tests(t: mut Tests) {
     t.equal(b.implemented_traits.size, a.implemented_traits.size)
   })
 
-  t.test('Class.summary', fn (t) {
+  t.test('Type.summary', fn (t) {
     let cls = ir.Type(
       name: 'A',
       location: ir.Location.default,
@@ -904,12 +913,12 @@ fn pub tests(t: mut Tests) {
     )
   })
 
-  t.test('Class.value_semantics', fn (t) {
-    let atomic_class = empty_class(ir.TypeKind.Atomic)
-    let async_class = empty_class(ir.TypeKind.Async)
-    let extern_class = empty_class(ir.TypeKind.Extern)
-    let value_class = empty_class(ir.TypeKind.ValueType)
-    let regular_class = empty_class(ir.TypeKind.Regular)
+  t.test('Type.value_semantics', fn (t) {
+    let atomic_class = empty_type(ir.TypeKind.Atomic)
+    let async_class = empty_type(ir.TypeKind.Async)
+    let extern_class = empty_type(ir.TypeKind.Extern)
+    let value_class = empty_type(ir.TypeKind.ValueType)
+    let regular_class = empty_type(ir.TypeKind.Regular)
 
     t.true(
       match atomic_class.value_semantics {
@@ -944,7 +953,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Trait.parse', fn (t) {
-    let parser = PullParser.new(
+    let parser = pull(
       '
       {
         "name": "A",
@@ -996,8 +1005,8 @@ fn pub tests(t: mut Tests) {
     let trt = try ir.Trait.parse(parser)
 
     t.equal(trt.name, 'A')
-    t.equal(trt.location.lines, InclusiveRange.new(1, 2))
-    t.equal(trt.location.columns, InclusiveRange.new(1, 2))
+    t.equal(trt.location.lines, ir.Range.new(1, 2))
+    t.equal(trt.location.columns, ir.Range.new(1, 2))
     t.equal(trt.public, true)
     t.equal(trt.type, 'class A')
     t.equal(
@@ -1145,7 +1154,10 @@ fn pub tests(t: mut Tests) {
       ir.Method(
         name: 'example',
         file: 'fixtures/method.inko'.to_path,
-        location: ir.Location(lines: 2.to(5), columns: 1.to(1)),
+        location: ir.Location(
+          lines: ir.Range.new(2, 5),
+          columns: ir.Range.new(1, 1),
+        ),
         public: true,
         type: 'fn example',
         documentation: Markdown.new,
@@ -1164,7 +1176,10 @@ fn pub tests(t: mut Tests) {
     let raw = ir.Method(
       name: 'example',
       file: 'fixtures/method.inko'.to_path,
-      location: ir.Location(lines: 2.to(5), columns: 1.to(1)),
+      location: ir.Location(
+        lines: ir.Range.new(2, 5),
+        columns: ir.Range.new(1, 1),
+      ),
       public: true,
       type: 'fn example',
       documentation: Markdown.new,
@@ -1181,7 +1196,10 @@ fn pub tests(t: mut Tests) {
     let raw = ir.Method(
       name: 'example',
       file: 'fixtures/method.inko'.to_path,
-      location: ir.Location(lines: 2.to(5), columns: 1.to(1)),
+      location: ir.Location(
+        lines: ir.Range.new(2, 5),
+        columns: ir.Range.new(1, 1),
+      ),
       public: true,
       type: 'fn example',
       documentation: Markdown(markdown.Document.parse('# foo').get),

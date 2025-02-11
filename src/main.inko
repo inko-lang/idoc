@@ -1,12 +1,11 @@
 import idoc.cmd (run)
 import std.env (arguments, working_directory)
-import std.io (Write)
 import std.stdio (Stderr, Stdout)
 import std.sys (exit)
 
-class async Main {
+type async Main {
   fn async main {
-    let out = Stdout.new as Write
+    let out = Stdout.new
     let pwd = working_directory.or_else(fn (_) { '.'.to_path })
 
     match run(arguments, pwd, out) {

@@ -28,7 +28,7 @@
       "documentation": "Example"
     }
   ],
-  "classes": [
+  "types": [
     {
       "name": "A",
       "location": {

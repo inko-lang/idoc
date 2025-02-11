@@ -1,8 +1,8 @@
+import idoc.ir (Range)
 import std.cmp (min)
 import std.fs.file (ReadOnlyFile)
 import std.fs.path (Path)
 import std.io (BufferedReader, Error)
-import std.range (InclusiveRange)
 
 let LF = 10
 let SPACE = 32
@@ -10,7 +10,7 @@ let TAB = 9
 
 fn read_source_code(
   path: ref Path,
-  lines: ref InclusiveRange,
+  lines: ref Range,
   dedent: Int,
 ) -> Result[ByteArray, String] {
   let reader = try ReadOnlyFile

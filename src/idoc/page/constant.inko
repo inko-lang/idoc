@@ -10,7 +10,7 @@ import std.fs.path (Path)
 import wobsite (Files, UpdateAssetLinks)
 import wobsite.url (file_url)
 
-class Page {
+type Page {
   let @module: ModuleName
   let @path: Path
   let @source: String

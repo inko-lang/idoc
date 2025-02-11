@@ -7,7 +7,7 @@ import std.int (ToInt)
 import std.json (Json)
 import wobsite (Files)
 
-class enum Kind {
+type enum Kind {
   case Module
   case Constant
   case Class
@@ -32,7 +32,7 @@ impl ToInt for Kind {
   }
 }
 
-class Symbol {
+type Symbol {
   let @kind: Kind
   let @scope: String
   let @name: String
@@ -218,7 +218,7 @@ class Symbol {
   }
 }
 
-impl Compare[Symbol] for Symbol {
+impl Compare for Symbol {
   fn pub cmp(other: ref Symbol) -> Ordering {
     match @scope.cmp(other.scope) {
       case Equal -> @name.cmp(other.name)
@@ -227,7 +227,7 @@ impl Compare[Symbol] for Symbol {
   }
 }
 
-class Page {
+type Page {
   let @symbols: Array[Symbol]
 
   fn static new -> Page {
