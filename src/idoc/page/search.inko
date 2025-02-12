@@ -10,7 +10,7 @@ import wobsite (Files)
 type enum Kind {
   case Module
   case Constant
-  case Class
+  case Type
   case Trait
   case ModuleMethod
   case Method
@@ -23,7 +23,7 @@ impl ToInt for Kind {
     match self {
       case Module -> 0
       case Constant -> 1
-      case Class -> 2
+      case Type -> 2
       case Trait -> 3
       case ModuleMethod or Method -> 4
       case Field -> 5
@@ -91,7 +91,7 @@ type Symbol {
       symbols.push(
         recover {
           Symbol(
-            kind: Kind.Class,
+            kind: Kind.Type,
             scope: mname.name,
             name: c.name,
             link: mname.symbol_link(c.name),

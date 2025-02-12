@@ -4,7 +4,7 @@
   const KINDS = [
     { text: 'Module', color: 'purple' },
     { text: 'Constant', color: 'green' },
-    { text: 'Class', color: 'yellow' },
+    { text: 'Type', color: 'yellow' },
     { text: 'Trait', color: 'yellow' },
     { text: 'Method', color: 'blue' },
     { text: 'Field', color: 'green' },
