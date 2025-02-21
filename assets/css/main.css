@@ -528,21 +528,6 @@ details.source[open] + .symbol-type {
   display: none;
 }
 
-@media only screen and (min-width: 950px) {
-  #page .grid {
-    grid-template-columns: 180px 3fr 180px;
-  }
-
-  body.search-visible #page .grid {
-    grid-template-columns: 180px 3fr;
-  }
-
-  body:not(.search-visible) #right {
-    display: block;
-    grid-column: 3;
-  }
-}
-
 @media only screen and (min-width: 901px) {
   #page .grid {
     grid-template-columns: 180px 3fr;
@@ -556,6 +541,21 @@ details.source[open] + .symbol-type {
 
   #page aside > ul {
     height: 80vh;
+  }
+}
+
+@media only screen and (min-width: 950px) {
+  #page .grid {
+    grid-template-columns: 180px 3fr 180px;
+  }
+
+  body.search-visible #page .grid {
+    grid-template-columns: 180px 3fr;
+  }
+
+  body:not(.search-visible) #right {
+    display: block;
+    grid-column: 3;
   }
 }
 
