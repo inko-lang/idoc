@@ -444,6 +444,12 @@ impl Clone for Constructor {
   }
 }
 
+impl Compare for Constructor {
+  fn pub cmp(other: ref Constructor) -> Ordering {
+    @name.cmp(other.name)
+  }
+}
+
 # A type describing a single method.
 type Method {
   # The name of the method.
@@ -723,6 +729,7 @@ type Type {
     val.instance_methods.sort
     val.static_methods.sort
     val.implemented_traits.sort
+    val.constructors.sort
     Result.Ok(val)
   }
 }

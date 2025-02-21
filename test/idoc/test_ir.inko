@@ -453,6 +453,25 @@ fn pub tests(t: mut Tests) {
     t.equal(b.type, a.type)
   })
 
+  t.test('Constructor.cmp', fn (t) {
+    let a = ir.Constructor(
+      name: 'A',
+      location: ir.Location.default,
+      type: 'Int',
+      documentation: Markdown.new,
+    )
+    let b = ir.Constructor(
+      name: 'B',
+      location: ir.Location.default,
+      type: 'Int',
+      documentation: Markdown.new,
+    )
+
+    t.equal(a.cmp(b), Ordering.Less)
+    t.equal(b.cmp(a), Ordering.Greater)
+    t.equal(a.cmp(a), Ordering.Equal)
+  })
+
   t.ok('Method.parse', fn (t) {
     let parser = pull(
       '
@@ -701,6 +720,15 @@ fn pub tests(t: mut Tests) {
         "documentation": "Example",
         "constructors": [
           {
+            "name": "B",
+            "location": {
+              "lines": { "start": 1, "end": 2 },
+              "columns": { "start": 1, "end": 2 }
+            },
+            "type": "A",
+            "documentation": ""
+          },
+          {
             "name": "A",
             "location": {
               "lines": { "start": 1, "end": 2 },
@@ -777,7 +805,9 @@ fn pub tests(t: mut Tests) {
       cls.documentation.to_html(increment_headings: 0).to_string,
       '<p>Example</p>',
     )
-    t.equal(cls.constructors.size, 1)
+    t.equal(cls.constructors.size, 2)
+    t.equal(cls.constructors.get(0).name, 'A')
+    t.equal(cls.constructors.get(1).name, 'B')
     t.equal(cls.fields.size, 1)
     t.equal(cls.static_methods.size, 1)
     t.equal(cls.instance_methods.size, 1)
