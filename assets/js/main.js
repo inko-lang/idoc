@@ -131,6 +131,14 @@
           name_link.setAttribute('href', rel + row.link);
           name_link.setAttribute('title', name_text);
           name_link.innerText = name_text;
+          name_link.addEventListener('click', (e) => {
+            // If the base path is the same but the hash differs, there's no
+            // page (re)load so we have to explicitly hide the search results.
+            if (name_link.pathname == window.location.pathname) {
+              this.input.value = '';
+              this.reset();
+            }
+          });
           name_td.appendChild(name_link);
 
           let desc_td = document.createElement('td');
