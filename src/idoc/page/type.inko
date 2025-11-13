@@ -57,7 +57,7 @@ type Page {
                 t.text(@type.name)
               })
 
-              if @type.public.false? { private(h) }
+              if !@type.public { private(h) }
 
               match @type.kind {
                 case Atomic or Async -> atomic(h)
@@ -69,26 +69,26 @@ type Page {
             content.append(signature_html)
             content.append(documentation_html)
 
-            if @type.fields.size > 0 and @type.kind.enum?.false? {
+            if @type.fields.size > 0 and !@type.kind.enum? {
               content.h2.text('Fields')
 
-              @type.fields.iter.each(fn (sym) {
+              for sym in @type.fields.iter {
                 content.header.with(fn (h) {
                   h.h3.attr('id', 'field.${sym.name}').text(sym.name)
 
-                  if sym.public.false? { private(h) }
+                  if !sym.public { private(h) }
                 })
                 symbol_info(content, fn (c) {
                   c.append(highlight_inko(sym.type.to_byte_array))
                   c.append(sym.documentation.to_html(increment_headings: 2))
                 })
-              })
+              }
             }
 
             if @type.constructors.size > 0 {
               content.h2.text('Constructors')
 
-              @type.constructors.iter.each(fn (sym) {
+              for sym in @type.constructors.iter {
                 content.header.with(fn (h) {
                   h.h3.attr('id', 'constructor.${sym.name}').text(sym.name)
                 })
@@ -96,7 +96,7 @@ type Page {
                   c.append(highlight_inko(sym.type.to_byte_array))
                   c.append(sym.documentation.to_html(increment_headings: 2))
                 })
-              })
+              }
             }
 
             if @type.static_methods.size > 0 {

@@ -9,11 +9,10 @@ ASSETS := ${DATADIR}/idoc/assets
 	@test $${VERSION?The VERSION variable must be set}
 
 build:
-	inko pkg sync
-	inko build --define "idoc.cmd.ASSETS=$$(realpath --canonicalize-missing ${ASSETS})" -o ./build/idoc
+	inko build --release --define "idoc.cmd.ASSETS=$$(realpath --canonicalize-missing ${ASSETS})"
 
 install: build
-	install -D --mode=755 build/idoc ${DESTDIR}${BINDIR}/idoc
+	install -D --mode=755 build/release/idoc ${DESTDIR}${BINDIR}/idoc
 	mkdir -p ${DESTDIR}${ASSETS}
 	cp --recursive assets/* ${DESTDIR}${ASSETS}
 

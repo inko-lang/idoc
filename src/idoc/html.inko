@@ -11,8 +11,8 @@ import syntax.lexer.inko (Lexer)
 fn extract_table_of_contents(document: mut Document) -> Option[Node] {
   match document.nodes.last {
     case Some(Element({ @name = 'ul', @attributes = attr })) -> {
-      match attr.opt('class') {
-        case Some('toc') -> document.nodes.pop
+      match attr.get('class') {
+        case Ok('toc') -> document.nodes.pop
         case _ -> Option.None
       }
     }
@@ -26,16 +26,19 @@ fn adjust_headings(document: mut Document, add: Int) {
   let one = 49
   let six = 54
 
-  document.nodes.iter_mut.each(fn (node) {
+  for node in document.nodes.iter_mut {
     let el = match node {
-      case Element(el) if el.name.size == 2 and el.name.byte(0) == h -> el
+      case Element(el) if el.name.size == 2 and el.name.get(0).or_panic == h
+      -> {
+        el
+      }
       case _ -> return
     }
 
-    let num = el.name.byte(1)
+    let num = el.name.get(1).or_panic
 
     if num >= one and num <= six { el.name = 'h${num - zero + add}' }
-  })
+  }
 }
 
 fn link_to(root: mut Element, from: String, to: String, text: String) {
@@ -155,13 +158,13 @@ fn sidebar(
 
   left.header.h1.text('Modules')
   left.ul.with(fn (ul) {
-    links.iter.each(fn (link) {
+    for link in links.iter {
       let a = ul.li.a
 
       if module == link.link { a.attr('class', 'current') }
 
       a.attr('href', relative_url(current, to: link.link)).text(link.name)
-    })
+    }
   })
 }
 
@@ -258,18 +261,18 @@ fn source_block(root: mut Element, source: ref ByteArray, signature: String) {
 }
 
 fn methods(root: mut Element, methods: ref Array[ir.MethodWithSource]) {
-  methods.iter.each(fn (method) {
+  for method in methods.iter {
     root.header.with(fn (h) {
       h.h3.attr('id', 'method.${method.node.name}').text(method.node.name)
 
-      if method.node.public.false? { private(h) }
+      if !method.node.public { private(h) }
     })
 
     symbol_info(root, fn (c) {
       source_block(c, method.source, signature: method.node.type)
       c.append(method.documentation)
     })
-  })
+  }
 }
 
 fn implementations(
@@ -280,14 +283,15 @@ fn implementations(
 ) {
   let mods_map = Map.new
 
-  modules.iter.each(fn (m) { mods_map.set(m.name, m) })
-  implementations.iter.each(fn (imp) {
+  for m in modules.iter { mods_map.set(m.name, m) }
+
+  for imp in implementations.iter {
     root.header.with(fn (h) {
       # The module name is displayed outside of the heading (but with the same
       # style) such that it isn't included in the table of contents, which would
       # be too noisy and redundant.
-      match mods_map.opt(imp.module) {
-        case Some(target) -> {
+      match mods_map.get(imp.module) {
+        case Ok(target) -> {
           h.span.attr('class', 'module-name').with(fn (span) {
             link_to(span, current_url, target.link, text: '${imp.module}')
             span.text('.')
@@ -306,9 +310,9 @@ fn implementations(
         }
       }
 
-      if imp.public.false? { private(h) }
+      if !imp.public { private(h) }
     })
 
     symbol_info(root, fn (c) { type_signature(c, imp.type) })
-  })
+  }
 }

@@ -29,7 +29,7 @@ fn read_source_code(
       let ws = line.iter.take_while(fn (b) { b == SPACE or b == TAB }).count
 
       lnum += 1
-      bytes.copy_from(line, at: min(dedent, ws), size: line.size)
+      bytes.append(line.slice(min(dedent, ws), line.size))
     } else {
       if bytes.last.or(-1) == LF { bytes.pop }
 
@@ -43,9 +43,7 @@ fn read_source_code(
 }
 
 fn copy_files(from: ref Path, to: ref Path) -> Result[Nil, Error] {
-  let iter = try from.list_all
-
-  iter.try_each(fn (res) {
+  for res in try from.list_all {
     match res {
       case Ok({ @path = p, @type = File }) -> {
         let to = to.join(p.strip_prefix(from).get)
@@ -54,10 +52,12 @@ fn copy_files(from: ref Path, to: ref Path) -> Result[Nil, Error] {
         # the need for an extra stat() call.
         let _ = to.directory.create_directory
 
-        p.copy(to).map(fn (_) { nil })
+        try p.copy(to).map(fn (_) { nil })
       }
-      case Ok(_) -> Result.Ok(nil)
-      case Error(e) -> Result.Error(e)
+      case Ok(_) -> {}
+      case Error(e) -> throw e
     }
-  })
+  }
+
+  Result.Ok(nil)
 }

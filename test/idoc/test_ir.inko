@@ -2,7 +2,7 @@ import idoc.ir
 import idoc.markdown (Markdown)
 import markdown
 import std.cmp (Ordering)
-import std.io (Buffer)
+import std.io (Buffer, Error as IoError)
 import std.json (PullParser)
 import std.sync (Channel)
 import std.test (Tests)
@@ -11,7 +11,7 @@ fn two_paragraphs -> Markdown {
   Markdown(markdown.Document.parse('first\n\nsecond').get)
 }
 
-fn pull(input: String) -> PullParser[Buffer[String]] {
+fn pull(input: String) -> PullParser[Buffer[String], IoError] {
   PullParser.new(Buffer.new(input))
 }
 
@@ -75,7 +75,7 @@ fn pub tests(t: mut Tests) {
   })
 
   t.ok('Module.parse_all with a valid path', fn (t) {
-    let mods = try ir.Module.parse_all('fixtures/valid'.to_path)
+    let (mods, names) = try ir.Module.parse_all('fixtures/valid'.to_path)
     let mod = match mods.pop {
       case Some(v) -> recover v
       case _ -> throw 'at least a single module must be parsed'
@@ -83,6 +83,7 @@ fn pub tests(t: mut Tests) {
 
     t.equal(mod.name, 'std.foo')
     t.equal(mod.file, 'src/std/foo.inko'.to_path)
+    t.equal(names.into_iter.map(fn (v) { v.name }).to_array, ['std.foo'])
     Result.Ok(nil)
   })
 
@@ -806,8 +807,8 @@ fn pub tests(t: mut Tests) {
       '<p>Example</p>',
     )
     t.equal(cls.constructors.size, 2)
-    t.equal(cls.constructors.get(0).name, 'A')
-    t.equal(cls.constructors.get(1).name, 'B')
+    t.equal(cls.constructors.get(0).or_panic.name, 'A')
+    t.equal(cls.constructors.get(1).or_panic.name, 'B')
     t.equal(cls.fields.size, 1)
     t.equal(cls.static_methods.size, 1)
     t.equal(cls.instance_methods.size, 1)
@@ -1196,8 +1197,11 @@ fn pub tests(t: mut Tests) {
     let methods = try ir.MethodWithSource.array_of(raw)
 
     t.equal(methods.size, 1)
-    t.equal(methods.get(0).node.name, 'example')
-    t.equal(methods.get(0).source.to_string, 'fn example {\n  10\n  20\n}')
+    t.equal(methods.get(0).or_panic.node.name, 'example')
+    t.equal(
+      methods.get(0).or_panic.source.to_string,
+      'fn example {\n  10\n  20\n}',
+    )
 
     Result.Ok(nil)
   })

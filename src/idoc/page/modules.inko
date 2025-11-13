@@ -66,7 +66,7 @@ type Page {
 
             content.h2.text('Modules')
             content.table.attr('class', 'symbols').tbody.with(fn (tbody) {
-              @modules.iter.each(fn (mod) {
+              for mod in @modules.iter {
                 tbody.tr.with(fn (tr) {
                   tr.td.with(fn (td) {
                     let url = relative_url(from: current_url, to: mod.name.link)
@@ -76,7 +76,7 @@ type Page {
 
                   tr.td.append(mod.to_html)
                 })
-              })
+              }
             })
           })
         })

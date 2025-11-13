@@ -63,7 +63,7 @@ type Page {
                 t.text(@constant.name)
               })
 
-              if @constant.public.false? { private(h) }
+              if !@constant.public { private(h) }
             })
 
             source_block(content, source, signature: @constant.type)

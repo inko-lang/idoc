@@ -54,7 +54,7 @@ type Page {
                 t.text(@method.name)
               })
 
-              if @method.public.false? { private(h) }
+              if !@method.public { private(h) }
             })
 
             source_block(content, source, signature: @method.type)

@@ -25,10 +25,10 @@ fn symbols[I: ir.Symbol](
 
   root.h2.text(title)
   root.table.attr('class', 'symbols').tbody.with(fn (tbody) {
-    symbols.iter.each(fn (s) {
+    for s in symbols.iter {
       tbody.tr.with(fn (tr) {
         tr.td.attr('class', 'min').with(fn (td) {
-          if s.public?.false? { private(td) }
+          if !s.public? { private(td) }
 
           match s.value_semantics {
             case Atomic -> atomic(td)
@@ -46,7 +46,7 @@ fn symbols[I: ir.Symbol](
 
         tr.td.append(s.summary.to_html(increment_headings: 0))
       })
-    })
+    }
   })
 }
 

@@ -58,7 +58,7 @@ type Page {
                 t.text(@trait.name)
               })
 
-              if @trait.public.false? { private(h) }
+              if !@trait.public { private(h) }
             })
 
             content.append(signature_html)

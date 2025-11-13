@@ -2,12 +2,13 @@
 import builder.html
 import idoc.fs (read_source_code)
 import idoc.markdown (Markdown)
+import idoc.module_name (ModuleName)
 import std.clone (Clone)
 import std.cmp (Compare, Equal, Ordering)
 import std.fmt (Format, Formatter)
 import std.fs.file (ReadOnlyFile)
 import std.fs.path (Path)
-import std.io (Read)
+import std.io (Error as IoError, Read)
 import std.json (Error, ErrorKind, PullParser)
 import std.sync (Channel)
 
@@ -43,10 +44,10 @@ impl Format for Range {
 }
 
 # Parses a stream of bytes into a `Range`.
-fn parse_range[T: mut + Read](
-  parser: mut PullParser[T],
+fn parse_range[T: mut + Read[IoError]](
+  parser: mut PullParser[T, IoError],
   range: mut Range,
-) -> Result[Nil, Error] {
+) -> Result[Nil, Error[IoError]] {
   try parser.object(fn (o) {
     o.int('start', fn (v) { range.start = v })
     o.int('end', fn (v) { range.end = v })
@@ -90,10 +91,10 @@ type Location {
     Location(Range.new(1, 1), Range.new(1, 1))
   }
 
-  fn static parse[T: mut + Read](
-    parser: mut PullParser[T],
+  fn static parse[T: mut + Read[IoError]](
+    parser: mut PullParser[T, IoError],
     location: mut Location,
-  ) -> Result[Nil, Error] {
+  ) -> Result[Nil, Error[IoError]] {
     try parser.object(fn (o) {
       o.key('lines', fn (p) { parse_range(p, location.lines) })
       o.key('columns', fn (p) { parse_range(p, location.columns) })
@@ -134,19 +135,25 @@ type Module {
 
   fn static parse_all(
     directory: ref Path,
-  ) -> Result[Array[uni Module], String] {
+  ) -> Result[(Array[uni Module], Array[ModuleName]), String] {
     let chan = Channel.new
     let mut pending = try directory
       .list
       .then(fn (iter) {
         iter.try_reduce(0, fn (sum, res) {
           match res {
-            case
-              Ok({ @path = p, @type = File })
-            if p.extension.or('') == 'json' and p.tail.starts_with?('$').false?
-            -> {
-              Parser().parse(recover p.clone, recover chan.clone)
-              Result.Ok(sum + 1)
+            case Ok({ @path = p, @type = File }) -> {
+              let process = match p.extension {
+                case Some('json') -> !p.tail.starts_with?('$')
+                case _ -> false
+              }
+
+              if process {
+                Parser().parse(recover p.clone, recover chan.clone)
+                Result.Ok(sum + 1)
+              } else {
+                Result.Ok(sum)
+              }
             }
             case Ok(_) -> Result.Ok(sum)
             case Error(e) -> Result.Error(e)
@@ -156,6 +163,7 @@ type Module {
       .map_error(fn (e) { 'failed to get the JSON files to process: ${e}' })
 
     let modules = []
+    let names = []
 
     while pending > 0 {
       let mod = recover {
@@ -165,15 +173,19 @@ type Module {
         }
       }
 
-      if mod.symbols? { modules.push(mod) }
+      if mod.symbols? {
+        names.push(ModuleName.new(mod.name))
+        modules.push(mod)
+      }
 
       pending -= 1
     }
 
-    Result.Ok(modules)
+    names.sort
+    Result.Ok((modules, names))
   }
 
-  fn static parse_file(path: Path) -> Result[Module, Error] {
+  fn static parse_file(path: Path) -> Result[Module, Error[IoError]] {
     let mod = Module(
       name: '',
       file: ''.to_path,
@@ -246,7 +258,7 @@ type Metadata {
   # The README of the project, if any was found.
   let mut @readme: Markdown
 
-  fn static parse(directory: ref Path) -> Result[Metadata, Error] {
+  fn static parse(directory: ref Path) -> Result[Metadata, Error[IoError]] {
     let path = directory.join(META)
     let file = try ReadOnlyFile.new(path).map_error(fn (e) {
       Error(kind: ErrorKind.Read(e), offset: 0)
@@ -281,9 +293,9 @@ type Constant {
   # The documentation of the symbol.
   let mut @documentation: Markdown
 
-  fn static parse[T: mut + Read](
-    parser: mut PullParser[T],
-  ) -> Result[Constant, Error] {
+  fn static parse[T: mut + Read[IoError]](
+    parser: mut PullParser[T, IoError],
+  ) -> Result[Constant, Error[IoError]] {
     let val = Constant(
       name: '',
       location: Location.default,
@@ -359,9 +371,9 @@ type Field {
   # The documentation of the symbol.
   let mut @documentation: Markdown
 
-  fn static parse[T: mut + Read](
-    parser: mut PullParser[T],
-  ) -> Result[Field, Error] {
+  fn static parse[T: mut + Read[IoError]](
+    parser: mut PullParser[T, IoError],
+  ) -> Result[Field, Error[IoError]] {
     let val = Field(
       name: '',
       location: Location.default,
@@ -410,9 +422,9 @@ type Constructor {
   # The documentation of the symbol.
   let mut @documentation: Markdown
 
-  fn static parse[T: mut + Read](
-    parser: mut PullParser[T],
-  ) -> Result[Constructor, Error] {
+  fn static parse[T: mut + Read[IoError]](
+    parser: mut PullParser[T, IoError],
+  ) -> Result[Constructor, Error[IoError]] {
     let val = Constructor(
       name: '',
       location: Location.default,
@@ -473,9 +485,9 @@ type Method {
   # The documentation of the symbol.
   let mut @documentation: Markdown
 
-  fn static parse[T: mut + Read](
-    parser: mut PullParser[T],
-  ) -> Result[Method, Error] {
+  fn static parse[T: mut + Read[IoError]](
+    parser: mut PullParser[T, IoError],
+  ) -> Result[Method, Error[IoError]] {
     let val = Method(
       name: '',
       file: ''.to_path,
@@ -617,9 +629,9 @@ type Implementation {
   # A boolean indicating if the implemented trait is public or not.
   let mut @public: Bool
 
-  fn static parse[T: mut + Read](
-    parser: mut PullParser[T],
-  ) -> Result[Implementation, Error] {
+  fn static parse[T: mut + Read[IoError]](
+    parser: mut PullParser[T, IoError],
+  ) -> Result[Implementation, Error[IoError]] {
     let imp = Implementation(module: '', name: '', type: '', public: false)
 
     try parser.object(fn (o) {
@@ -683,9 +695,9 @@ type Type {
   # The traits implemented by this type.
   let @implemented_traits: Array[Implementation]
 
-  fn static parse[T: mut + Read](
-    parser: mut PullParser[T],
-  ) -> Result[Type, Error] {
+  fn static parse[T: mut + Read[IoError]](
+    parser: mut PullParser[T, IoError],
+  ) -> Result[Type, Error[IoError]] {
     let val = Type(
       name: '',
       location: Location.default,
@@ -806,9 +818,9 @@ type Trait {
   # The implementations of this trait.
   let @implementations: Array[Implementation]
 
-  fn static parse[T: mut + Read](
-    parser: mut PullParser[T],
-  ) -> Result[Trait, Error] {
+  fn static parse[T: mut + Read[IoError]](
+    parser: mut PullParser[T, IoError],
+  ) -> Result[Trait, Error[IoError]] {
     let val = Trait(
       name: '',
       location: Location.default,
@@ -889,7 +901,7 @@ impl Symbol for Trait {
 type async Parser {
   fn async parse(
     input: uni Path,
-    output: uni Channel[uni Result[Module, (Path, Error)]],
+    output: uni Channel[uni Result[Module, (Path, Error[IoError])]],
   ) {
     let res = recover {
       let input = recover input

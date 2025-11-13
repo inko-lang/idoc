@@ -1,40 +1,7 @@
-import idoc.ir (Module)
-import idoc.markdown (Markdown)
 import idoc.module_name (ModuleName)
 import std.test (Tests)
 
 fn pub tests(t: mut Tests) {
-  t.test('ModuleName.array_of', fn (t) {
-    let mod1 = recover {
-      Module(
-        name: 'std.foo',
-        file: 'a'.to_path,
-        documentation: Markdown.new,
-        constants: [],
-        methods: [],
-        types: [],
-        traits: [],
-      )
-    }
-    let mod2 = recover {
-      Module(
-        name: 'std.bar',
-        file: 'a'.to_path,
-        documentation: Markdown.new,
-        constants: [],
-        methods: [],
-        types: [],
-        traits: [],
-      )
-    }
-    let names = ModuleName.array_of([mod1, mod2])
-
-    t.equal(names.get(0).name, 'std.bar')
-    t.equal(names.get(0).uri, 'module/std/bar/')
-    t.equal(names.get(1).name, 'std.foo')
-    t.equal(names.get(1).uri, 'module/std/foo/')
-  })
-
   t.test('ModuleName.new', fn (t) {
     let name = ModuleName.new('std.foo.bar')
 

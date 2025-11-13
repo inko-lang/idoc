@@ -11,8 +11,16 @@ type async Main {
     match run(arguments, pwd, out) {
       case Ok(_) -> {}
       case Error(e) -> {
-        # https://github.com/inko-lang/inko/issues/634
-        Stderr.new.print('\e[31;1merror\e[0m: ${e}')
+        let err = Stderr.new
+
+        if err.terminal? {
+          let _ = err.write('\e[31;1merror\e[0m: ')
+        } else {
+          let _ = err.write('error: ')
+        }
+
+        let _ = err.print(e)
+
         exit(1)
       }
     }

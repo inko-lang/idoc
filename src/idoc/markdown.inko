@@ -2,7 +2,7 @@ import builder.html
 import idoc.html (adjust_headings)
 import markdown
 import std.clone (Clone)
-import std.io (Read)
+import std.io (Error as IoError, Read)
 import std.json
 import wobsite.markdown (SyntaxHighlight)
 
@@ -14,9 +14,9 @@ type Markdown {
     Markdown(markdown.Document.new)
   }
 
-  fn static parse[T: mut + Read](
-    parser: mut json.PullParser[T],
-  ) -> Result[Markdown, json.Error] {
+  fn static parse[T: mut + Read[IoError]](
+    parser: mut json.PullParser[T, IoError],
+  ) -> Result[Markdown, json.Error[IoError]] {
     let start = try parser.start_of_next_value
 
     parser.string.then(fn (md) {
@@ -43,8 +43,8 @@ type Markdown {
   fn summary -> Markdown {
     let doc = markdown.Document.new
 
-    match @inner.children.opt(0) {
-      case Some(v) -> doc.children.push(v.clone)
+    match @inner.children.get(0) {
+      case Ok(v) -> doc.children.push(v.clone)
       case _ -> {}
     }
 

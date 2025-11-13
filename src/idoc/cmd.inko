@@ -9,8 +9,8 @@ import idoc.page.search
 import idoc.page.trait (self as trt)
 import idoc.page.type (self as typ)
 import std.fs.path (Path)
-import std.io (Write)
-import std.optparse (Help, Options)
+import std.io (Error as IoError, Write)
+import std.optparse (Options)
 import std.sys (Command, Stream)
 import wobsite (Site)
 
@@ -27,32 +27,6 @@ let OUTPUT_DIR = 'build/idoc'
 # This constant is public such that its path can be overwritten at compile-time
 # (e.g. by setting it to `/usr/share/idoc/assets`).
 let pub ASSETS = 'assets'
-
-fn usage[T: mut + Write](options: ref Options, output: mut T) {
-  let help = Help
-    .new('idoc')
-    .usage('[OPTIONS]')
-    .description(
-      'Generate documentation for the current project in the form of a static website.
-
-This command automatically invokes `inko doc` to generate the documentation JSON
-files used to generate the static website.
-
-Upon completion, the generated files are found in ./build/idoc/public/',
-    )
-    .section('Examples')
-    .line(
-      'idoc                       # Generate documentation for the current project',
-    )
-    .line(
-      'idoc path/to/my/project    # Generate documentation for the project in path/to/my/project',
-    )
-    .section('Options')
-    .options(options)
-    .to_string
-
-  let _ = output.write_string(help)
-}
 
 fn generate_json(
   executable: String,
@@ -81,12 +55,24 @@ fn generate_json(
   }
 }
 
-fn pub run[T: mut + Write](
+fn pub run[T: mut + Write[IoError]](
   arguments: Array[String],
   working_directory: ref Path,
   output: mut T,
 ) -> Result[Nil, String] {
-  let opts = Options.new
+  let opts = Options.new('idoc')
+
+  opts.description = 'Generate documentation for the current project in the form of a static website.
+
+This command automatically invokes `inko doc` to generate the documentation JSON
+files used to generate the static website.
+
+Upon completion, the generated files are found in ./build/idoc/public/
+
+Examples:
+
+  idoc                       # Generate documentation for the current project
+  idoc path/to/my/project    # Generate documentation for the project in path/to/my/project'
 
   opts.stop_at_first_non_option = true
   opts.flag('h', 'help', 'Show this help message')
@@ -98,7 +84,8 @@ fn pub run[T: mut + Write](
   let matches = try opts.parse(arguments).map_error(fn (e) { e.to_string })
 
   if matches.contains?('help') {
-    usage(opts, output)
+    let _ = output.print(opts.to_string)
+
     return Result.Ok(nil)
   }
 
@@ -136,8 +123,7 @@ fn pub run[T: mut + Write](
     'failed to set up the site generator: ${e}'
   })
 
-  let modules = try ir.Module.parse_all(input)
-  let sidebar = ModuleName.array_of(modules)
+  let (modules, sidebar) = try ir.Module.parse_all(input)
   let search_page = recover search.Page.new
   let mod_summaries = recover []
   let mods_iter = modules.into_iter
@@ -162,35 +148,35 @@ fn pub run[T: mut + Write](
       recover mods.Module.new(mod_name.clone, mod.documentation.summary),
     )
 
-    mod.unique_constants.into_iter.each(fn (c) {
+    for c in mod.unique_constants {
       let html = mod_name.symbol_html_uri(c.name)
       let page = recover {
         constant.Page.new(mod_name.clone, file.clone, c, sidebar.clone)
       }
 
       site.generate(html, fn move (f) { page.to_html(f) })
-    })
+    }
 
-    mod.unique_methods.into_iter.each(fn (m) {
+    for m in mod.unique_methods {
       let html = mod_name.symbol_html_uri(m.name)
       let page = recover method.Page.new(mod_name.clone, m, sidebar.clone)
 
       site.generate(html, fn move (f) { page.to_html(f) })
-    })
+    }
 
-    mod.unique_types.into_iter.each(fn (c) {
+    for c in mod.unique_types {
       let html = mod_name.symbol_html_uri(c.name)
       let page = recover typ.Page.new(mod_name.clone, c, sidebar.clone)
 
       site.generate(html, fn move (f) { page.to_html(f) })
-    })
+    }
 
-    mod.unique_traits.into_iter.each(fn (c) {
+    for c in mod.unique_traits {
       let html = mod_name.symbol_html_uri(c.name)
       let page = recover trt.Page.new(mod_name.clone, c, sidebar.clone)
 
       site.generate(html, fn move (f) { page.to_html(f) })
-    })
+    }
 
     let page = recover module.Page.new(mod_name.source_uri, sidebar.clone, mod)
 

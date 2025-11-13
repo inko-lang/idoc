@@ -242,7 +242,8 @@ type Page {
     let vals = []
 
     @symbols.sort
-    @symbols.iter.each(fn (sym) {
+
+    for sym in @symbols.iter {
       let obj = Map.new
 
       obj.set('kind', Json.Int(sym.kind.to_int))
@@ -251,7 +252,8 @@ type Page {
       obj.set('link', Json.String(sym.link))
       obj.set('desc', Json.String(sym.summary_html.to_string))
       vals.push(Json.Object(obj))
-    })
+    }
+
     Json.Array(vals).to_string
   }
 }

@@ -11,7 +11,7 @@ at `./build/idoc/public`. For more information, run `idoc --help`.
 
 ## Requirements
 
-- Inko 0.17.0 or newer
+- Inko 0.19.1 or newer
 
 ## Installation
 
@@ -36,7 +36,8 @@ make build ASSETS=$PWD/assets
 ```
 
 This builds the executable such that it uses the `assets/` directory directly
-from the repository. In this case the executable is found at `./build/idoc`.
+from the repository. In this case the executable is found at
+`./build/release/idoc`.
 
 You can also use the provided [Docker](https://www.docker.com/) image:
 
