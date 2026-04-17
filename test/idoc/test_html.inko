@@ -20,6 +20,9 @@ fn pub tests(t: mut Tests) {
   t.test('adjust_headings', fn (t) {
     let doc = Document.new
     let h1 = doc.h1
+
+    doc.p.text('example')
+
     let h2 = doc.h2
 
     html.adjust_headings(doc, add: 1)

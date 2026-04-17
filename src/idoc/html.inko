@@ -32,7 +32,7 @@ fn adjust_headings(document: mut Document, add: Int) {
       -> {
         el
       }
-      case _ -> return
+      case _ -> next
     }
 
     let num = el.name.get(1).or_panic
