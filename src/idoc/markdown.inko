@@ -1,10 +1,16 @@
 import builder.html
 import idoc.html (adjust_headings)
 import markdown
+import markdown.parser (Error as MarkdownError)
 import std.clone (Clone)
-import std.io (Error as IoError, Read)
+import std.io (Error as IoError)
 import std.json
 import wobsite.markdown (SyntaxHighlight)
+
+type inline enum Error {
+  case InvalidJson(json.Error[IoError])
+  case InvalidMarkdown(MarkdownError, Int)
+}
 
 # A Markdown document.
 type Markdown {
@@ -12,18 +18,6 @@ type Markdown {
 
   fn static new -> Markdown {
     Markdown(markdown.Document.new)
-  }
-
-  fn static parse[T: mut + Read[IoError]](
-    parser: mut json.PullParser[T, IoError],
-  ) -> Result[Markdown, json.Error[IoError]] {
-    let start = try parser.start_of_next_value
-
-    parser.string.then(fn (md) {
-      markdown.Document.parse(md).map(fn (v) { Markdown(v) }).map_error(
-        fn (e) { json.Error.generic(e.message, start + e.offset) },
-      )
-    })
   }
 
   fn empty? -> Bool {

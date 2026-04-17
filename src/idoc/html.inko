@@ -184,6 +184,15 @@ fn private(root: mut Element) {
   label(root, 'Private', title: 'This symbol is private', color: 'red')
 }
 
+fn mutable(root: mut Element) {
+  label(
+    root,
+    'Mutable',
+    title: 'This field is mutable and may be assigned a new value',
+    color: 'yellow',
+  )
+}
+
 fn atomic(root: mut Element) {
   label(
     root,

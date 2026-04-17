@@ -3,16 +3,140 @@ import builder.html
 import idoc.fs (read_source_code)
 import idoc.markdown (Markdown)
 import idoc.module_name (ModuleName)
+import markdown (Document as MarkdownDocument)
+import markdown.parser (Error as MarkdownError)
 import std.clone (Clone)
 import std.cmp (Compare, Equal, Ordering)
 import std.fmt (Format, Formatter)
 import std.fs.file (ReadOnlyFile)
 import std.fs.path (Path)
 import std.io (Error as IoError, Read)
-import std.json (Error, ErrorKind, PullParser)
+import std.json (Error as JsonError, PullParser)
+import std.string (ToString)
 import std.sync (Channel)
 
 let META = '$meta.json'
+
+type inline enum Error {
+  case InvalidJson(JsonError[IoError])
+  case InvalidMarkdown(MarkdownError, Int)
+  case InvalidKey(String)
+  case InvalidFile(IoError)
+
+  fn static json[T](result: Result[T, JsonError[IoError]]) -> Result[T, Error] {
+    result.map_error(fn (e) { Error.InvalidJson(e) })
+  }
+
+  fn static file(
+    result: Result[ReadOnlyFile, IoError],
+  ) -> Result[ReadOnlyFile, Error] {
+    result.map_error(fn (e) { Error.InvalidFile(e) })
+  }
+}
+
+impl Format for Error {
+  fn pub fmt(formatter: mut Formatter) {
+    match self {
+      case InvalidJson(e) -> formatter.tuple('InvalidJson').field(e).finish
+      case InvalidMarkdown(e, o) -> {
+        formatter.tuple('InvalidMarkdown').field(e).field(o).finish
+      }
+      case InvalidKey(v) -> formatter.tuple('InvalidKey').field(v).finish
+      case InvalidFile(e) -> formatter.tuple('InvalidFile').field(e).finish
+    }
+  }
+}
+
+impl Equal for Error {
+  fn pub ==(other: ref Self) -> Bool {
+    match (self, other) {
+      case (InvalidJson(a), InvalidJson(b)) -> a == b
+      case (InvalidMarkdown(a1, a2), InvalidMarkdown(b1, b2)) -> {
+        a1 == b1 and a2 == b2
+      }
+      case (InvalidKey(a), InvalidKey(b)) -> a == b
+      case (InvalidFile(a), InvalidFile(b)) -> a == b
+      case _ -> false
+    }
+  }
+}
+
+impl ToString for Error {
+  fn pub to_string -> String {
+    match self {
+      case InvalidJson(e) -> 'the JSON is invalid: ${e}'
+      case InvalidMarkdown(e, o) -> {
+        'the Markdown at byte offset ${o} is invalid: ${e}'
+      }
+      case InvalidKey(k) -> 'the object key "${k}" is not supported'
+      case InvalidFile(e) -> 'failed to open the file: ${e}'
+    }
+  }
+}
+
+type inline JsonParser[T: mut + Read[IoError]] {
+  let @inner: PullParser[T, IoError]
+
+  fn static new(input: T) -> Self {
+    Self(PullParser.new(input))
+  }
+
+  fn mut object(
+    value: fn (String) -> Result[Nil, Error],
+  ) -> Result[Nil, Error] {
+    try Error.json(@inner.object)
+
+    loop {
+      if !try Error.json(@inner.key?) { break }
+
+      try value.call(try Error.json(@inner.key))
+      try Error.json(@inner.next_key)
+    }
+
+    Result.Ok(nil)
+  }
+
+  fn mut array(value: fn -> Result[Nil, Error]) -> Result[Nil, Error] {
+    try Error.json(@inner.array)
+
+    while try Error.json(@inner.array_value?) {
+      try value.call
+      try Error.json(@inner.next_value)
+    }
+
+    Result.Ok(nil)
+  }
+
+  fn mut int -> Result[Int, Error] {
+    Error.json(@inner.int)
+  }
+
+  fn mut string -> Result[String, Error] {
+    Error.json(@inner.string)
+  }
+
+  fn mut path -> Result[Path, Error] {
+    string.map(fn (v) { v.to_path })
+  }
+
+  fn mut bool -> Result[Bool, Error] {
+    Error.json(@inner.bool)
+  }
+
+  fn mut markdown -> Result[Markdown, Error] {
+    let start = try Error.json(@inner.start_of_next_value)
+    let md = try Error.json(@inner.string)
+
+    match MarkdownDocument.parse(md) {
+      case Ok(v) -> Result.Ok(Markdown(v))
+      case Error(e) -> {
+        let off = start + e.offset
+
+        throw Error.InvalidMarkdown(e, off)
+      }
+    }
+  }
+}
 
 type Range {
   let mut @start: Int
@@ -45,15 +169,18 @@ impl Format for Range {
 
 # Parses a stream of bytes into a `Range`.
 fn parse_range[T: mut + Read[IoError]](
-  parser: mut PullParser[T, IoError],
+  parser: mut JsonParser[T],
   range: mut Range,
-) -> Result[Nil, Error[IoError]] {
-  try parser.object(fn (o) {
-    o.int('start', fn (v) { range.start = v })
-    o.int('end', fn (v) { range.end = v })
-  })
+) -> Result[Nil, Error] {
+  parser.object(fn (key) {
+    match key {
+      case 'start' -> range.start = try parser.int
+      case 'end' -> range.end = try parser.int
+      case key -> throw Error.InvalidKey(key)
+    }
 
-  Result.Ok(nil)
+    Result.Ok(nil)
+  })
 }
 
 # A type describing a symbol, such as a type or constant.
@@ -92,15 +219,18 @@ type Location {
   }
 
   fn static parse[T: mut + Read[IoError]](
-    parser: mut PullParser[T, IoError],
+    parser: mut JsonParser[T],
     location: mut Location,
-  ) -> Result[Nil, Error[IoError]] {
-    try parser.object(fn (o) {
-      o.key('lines', fn (p) { parse_range(p, location.lines) })
-      o.key('columns', fn (p) { parse_range(p, location.columns) })
-    })
+  ) -> Result[Nil, Error] {
+    parser.object(fn (key) {
+      match key {
+        case 'lines' -> try parse_range(parser, location.lines)
+        case 'columns' -> try parse_range(parser, location.columns)
+        case key -> throw Error.InvalidKey(key)
+      }
 
-    Result.Ok(nil)
+      Result.Ok(nil)
+    })
   }
 }
 
@@ -160,7 +290,7 @@ type Module {
           }
         })
       })
-      .map_error(fn (e) { 'failed to get the JSON files to process: ${e}' })
+      .map_error(fn (e) { e.to_string })
 
     let modules = []
     let names = []
@@ -169,7 +299,7 @@ type Module {
       let mod = recover {
         match chan.receive {
           case Ok(v) -> v
-          case Error((p, e)) -> throw 'failed to parse the JSON file ${p}: ${e}'
+          case Error((p, e)) -> throw 'failed to parse ${p}: ${e}'
         }
       }
 
@@ -185,7 +315,7 @@ type Module {
     Result.Ok((modules, names))
   }
 
-  fn static parse_file(path: Path) -> Result[Module, Error[IoError]] {
+  fn static parse_file(path: Path) -> Result[Module, Error] {
     let mod = Module(
       name: '',
       file: ''.to_path,
@@ -196,30 +326,42 @@ type Module {
       traits: [],
     )
 
-    let file = try ReadOnlyFile.new(path).map_error(fn (e) {
-      Error(kind: ErrorKind.Read(e), offset: 0)
-    })
+    let file = try Error.file(ReadOnlyFile.new(path))
+    let parser = JsonParser.new(file)
 
-    let parser = PullParser.new(file)
+    try parser.object(fn (key) {
+      match key {
+        case 'name' -> mod.name = try parser.string
+        case 'file' -> mod.file = try parser.path
+        case 'documentation' -> mod.documentation = try parser.markdown
+        case 'constants' -> {
+          try parser.array(fn {
+            mod.constants.push(try Constant.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case 'methods' -> {
+          try parser.array(fn {
+            mod.methods.push(try Method.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case 'types' -> {
+          try parser.array(fn {
+            mod.types.push(try Type.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case 'traits' -> {
+          try parser.array(fn {
+            mod.traits.push(try Trait.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case key -> throw Error.InvalidKey(key)
+      }
 
-    try parser.object(fn (o) {
-      o.string('name', fn (v) { mod.name = v })
-      o.string('file', fn (v) { mod.file = v.to_path })
-      o.key('documentation', fn (p) {
-        Markdown.parse(p).map(fn (v) { mod.documentation = v })
-      })
-      o.values('constants', fn (p) {
-        Constant.parse(p).map(fn (v) { mod.constants.push(v) })
-      })
-      o.values('methods', fn (p) {
-        Method.parse(p).map(fn (v) { mod.methods.push(v) })
-      })
-      o.values('types', fn (p) {
-        Type.parse(p).map(fn (v) { mod.types.push(v) })
-      })
-      o.values('traits', fn (p) {
-        Trait.parse(p).map(fn (v) { mod.traits.push(v) })
-      })
+      Result.Ok(nil)
     })
 
     mod.constants.sort
@@ -258,18 +400,19 @@ type Metadata {
   # The README of the project, if any was found.
   let mut @readme: Markdown
 
-  fn static parse(directory: ref Path) -> Result[Metadata, Error[IoError]] {
+  fn static parse(directory: ref Path) -> Result[Metadata, Error] {
     let path = directory.join(META)
-    let file = try ReadOnlyFile.new(path).map_error(fn (e) {
-      Error(kind: ErrorKind.Read(e), offset: 0)
-    })
-    let parser = PullParser.new(file)
+    let file = try Error.file(ReadOnlyFile.new(path))
+    let parser = JsonParser.new(file)
     let meta = Metadata(readme: Markdown.new)
 
-    try parser.object(fn (o) {
-      o.key('readme', fn (p) {
-        Markdown.parse(p).map(fn (v) { meta.readme = v })
-      })
+    try parser.object(fn (key) {
+      match key {
+        case 'readme' -> meta.readme = try parser.markdown
+        case key -> throw Error.InvalidKey(key)
+      }
+
+      Result.Ok(nil)
     })
 
     Result.Ok(meta)
@@ -294,8 +437,8 @@ type Constant {
   let mut @documentation: Markdown
 
   fn static parse[T: mut + Read[IoError]](
-    parser: mut PullParser[T, IoError],
-  ) -> Result[Constant, Error[IoError]] {
+    parser: mut JsonParser[T],
+  ) -> Result[Constant, Error] {
     let val = Constant(
       name: '',
       location: Location.default,
@@ -304,14 +447,17 @@ type Constant {
       documentation: Markdown.new,
     )
 
-    try parser.object(fn (o) {
-      o.string('name', fn (v) { val.name = v })
-      o.key('location', fn (p) { Location.parse(p, val.location) })
-      o.bool('public', fn (v) { val.public = v })
-      o.string('type', fn (v) { val.type = v })
-      o.key('documentation', fn (p) {
-        Markdown.parse(p).map(fn (v) { val.documentation = v })
-      })
+    try parser.object(fn (key) {
+      match key {
+        case 'name' -> val.name = try parser.string
+        case 'location' -> Location.parse(parser, val.location)
+        case 'public' -> val.public = try parser.bool
+        case 'type' -> val.type = try parser.string
+        case 'documentation' -> val.documentation = try parser.markdown
+        case key -> throw Error.InvalidKey(key)
+      }
+
+      Result.Ok(nil)
     })
 
     Result.Ok(val)
@@ -365,6 +511,9 @@ type Field {
   # A flag indicating if the symbol is public or not.
   let mut @public: Bool
 
+  # If the field is mutable or not.
+  let mut @mutable: Bool
+
   # A `String` describing the type (signature) of the symbol.
   let mut @type: String
 
@@ -372,24 +521,29 @@ type Field {
   let mut @documentation: Markdown
 
   fn static parse[T: mut + Read[IoError]](
-    parser: mut PullParser[T, IoError],
-  ) -> Result[Field, Error[IoError]] {
+    parser: mut JsonParser[T],
+  ) -> Result[Field, Error] {
     let val = Field(
       name: '',
       location: Location.default,
       public: false,
+      mutable: false,
       type: '',
       documentation: Markdown.new,
     )
 
-    try parser.object(fn (o) {
-      o.string('name', fn (v) { val.name = v })
-      o.key('location', fn (p) { Location.parse(p, val.location) })
-      o.bool('public', fn (v) { val.public = v })
-      o.string('type', fn (v) { val.type = v })
-      o.key('documentation', fn (p) {
-        Markdown.parse(p).map(fn (v) { val.documentation = v })
-      })
+    try parser.object(fn (key) {
+      match key {
+        case 'name' -> val.name = try parser.string
+        case 'location' -> Location.parse(parser, val.location)
+        case 'public' -> val.public = try parser.bool
+        case 'type' -> val.type = try parser.string
+        case 'mutable' -> val.mutable = try parser.bool
+        case 'documentation' -> val.documentation = try parser.markdown
+        case key -> throw Error.InvalidKey(key)
+      }
+
+      Result.Ok(nil)
     })
 
     Result.Ok(val)
@@ -402,6 +556,7 @@ impl Clone for Field {
       name: @name,
       location: @location.clone,
       public: @public,
+      mutable: @mutable,
       type: @type,
       documentation: @documentation.clone,
     )
@@ -423,8 +578,8 @@ type Constructor {
   let mut @documentation: Markdown
 
   fn static parse[T: mut + Read[IoError]](
-    parser: mut PullParser[T, IoError],
-  ) -> Result[Constructor, Error[IoError]] {
+    parser: mut JsonParser[T],
+  ) -> Result[Constructor, Error] {
     let val = Constructor(
       name: '',
       location: Location.default,
@@ -432,13 +587,16 @@ type Constructor {
       documentation: Markdown.new,
     )
 
-    try parser.object(fn (o) {
-      o.string('name', fn (v) { val.name = v })
-      o.key('location', fn (p) { Location.parse(p, val.location) })
-      o.string('type', fn (v) { val.type = v })
-      o.key('documentation', fn (p) {
-        Markdown.parse(p).map(fn (v) { val.documentation = v })
-      })
+    try parser.object(fn (key) {
+      match key {
+        case 'name' -> val.name = try parser.string
+        case 'location' -> Location.parse(parser, val.location)
+        case 'type' -> val.type = try parser.string
+        case 'documentation' -> val.documentation = try parser.markdown
+        case key -> throw Error.InvalidKey(key)
+      }
+
+      Result.Ok(nil)
     })
 
     Result.Ok(val)
@@ -486,8 +644,8 @@ type Method {
   let mut @documentation: Markdown
 
   fn static parse[T: mut + Read[IoError]](
-    parser: mut PullParser[T, IoError],
-  ) -> Result[Method, Error[IoError]] {
+    parser: mut JsonParser[T],
+  ) -> Result[Method, Error] {
     let val = Method(
       name: '',
       file: ''.to_path,
@@ -497,15 +655,18 @@ type Method {
       documentation: Markdown.new,
     )
 
-    try parser.object(fn (o) {
-      o.string('name', fn (v) { val.name = v })
-      o.string('file', fn (v) { val.file = v.to_path })
-      o.key('location', fn (p) { Location.parse(p, val.location) })
-      o.bool('public', fn (v) { val.public = v })
-      o.string('type', fn (v) { val.type = v })
-      o.key('documentation', fn (p) {
-        Markdown.parse(p).map(fn (v) { val.documentation = v })
-      })
+    try parser.object(fn (key) {
+      match key {
+        case 'name' -> val.name = try parser.string
+        case 'file' -> val.file = try parser.path
+        case 'location' -> Location.parse(parser, val.location)
+        case 'public' -> val.public = try parser.bool
+        case 'type' -> val.type = try parser.string
+        case 'documentation' -> val.documentation = try parser.markdown
+        case key -> throw Error.InvalidKey(key)
+      }
+
+      Result.Ok(nil)
     })
 
     Result.Ok(val)
@@ -630,15 +791,20 @@ type Implementation {
   let mut @public: Bool
 
   fn static parse[T: mut + Read[IoError]](
-    parser: mut PullParser[T, IoError],
-  ) -> Result[Implementation, Error[IoError]] {
+    parser: mut JsonParser[T],
+  ) -> Result[Implementation, Error] {
     let imp = Implementation(module: '', name: '', type: '', public: false)
 
-    try parser.object(fn (o) {
-      o.string('module', fn (v) { imp.module = v })
-      o.string('name', fn (v) { imp.name = v })
-      o.string('type', fn (v) { imp.type = v })
-      o.bool('public', fn (v) { imp.public = v })
+    try parser.object(fn (key) {
+      match key {
+        case 'module' -> imp.module = try parser.string
+        case 'name' -> imp.name = try parser.string
+        case 'type' -> imp.type = try parser.string
+        case 'public' -> imp.public = try parser.bool
+        case key -> throw Error.InvalidKey(key)
+      }
+
+      Result.Ok(nil)
     })
 
     Result.Ok(imp)
@@ -696,8 +862,8 @@ type Type {
   let @implemented_traits: Array[Implementation]
 
   fn static parse[T: mut + Read[IoError]](
-    parser: mut PullParser[T, IoError],
-  ) -> Result[Type, Error[IoError]] {
+    parser: mut JsonParser[T],
+  ) -> Result[Type, Error] {
     let val = Type(
       name: '',
       location: Location.default,
@@ -712,30 +878,48 @@ type Type {
       implemented_traits: [],
     )
 
-    try parser.object(fn (o) {
-      o.string('name', fn (v) { val.name = v })
-      o.key('location', fn (p) { Location.parse(p, val.location) })
-      o.int('kind', fn (v) { val.kind = TypeKind.from(v) })
-      o.bool('public', fn (v) { val.public = v })
-      o.string('type', fn (v) { val.type = v })
-      o.key('documentation', fn (p) {
-        Markdown.parse(p).map(fn (v) { val.documentation = v })
-      })
-      o.values('constructors', fn (p) {
-        Constructor.parse(p).map(fn (v) { val.constructors.push(v) })
-      })
-      o.values('fields', fn (p) {
-        Field.parse(p).map(fn (v) { val.fields.push(v) })
-      })
-      o.values('static_methods', fn (p) {
-        Method.parse(p).map(fn (v) { val.static_methods.push(v) })
-      })
-      o.values('instance_methods', fn (p) {
-        Method.parse(p).map(fn (v) { val.instance_methods.push(v) })
-      })
-      o.values('implemented_traits', fn (p) {
-        Implementation.parse(p).map(fn (v) { val.implemented_traits.push(v) })
-      })
+    try parser.object(fn (key) {
+      match key {
+        case 'name' -> val.name = try parser.string
+        case 'location' -> Location.parse(parser, val.location)
+        case 'kind' -> val.kind = TypeKind.from(try parser.int)
+        case 'public' -> val.public = try parser.bool
+        case 'type' -> val.type = try parser.string
+        case 'documentation' -> val.documentation = try parser.markdown
+        case 'constructors' -> {
+          try parser.array(fn {
+            val.constructors.push(try Constructor.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case 'fields' -> {
+          try parser.array(fn {
+            val.fields.push(try Field.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case 'static_methods' -> {
+          try parser.array(fn {
+            val.static_methods.push(try Method.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case 'instance_methods' -> {
+          try parser.array(fn {
+            val.instance_methods.push(try Method.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case 'implemented_traits' -> {
+          try parser.array(fn {
+            val.implemented_traits.push(try Implementation.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case key -> throw Error.InvalidKey(key)
+      }
+
+      Result.Ok(nil)
     })
 
     val.instance_methods.sort
@@ -819,8 +1003,8 @@ type Trait {
   let @implementations: Array[Implementation]
 
   fn static parse[T: mut + Read[IoError]](
-    parser: mut PullParser[T, IoError],
-  ) -> Result[Trait, Error[IoError]] {
+    parser: mut JsonParser[T],
+  ) -> Result[Trait, Error] {
     let val = Trait(
       name: '',
       location: Location.default,
@@ -832,23 +1016,35 @@ type Trait {
       implementations: [],
     )
 
-    try parser.object(fn (o) {
-      o.string('name', fn (v) { val.name = v })
-      o.key('location', fn (p) { Location.parse(p, val.location) })
-      o.bool('public', fn (v) { val.public = v })
-      o.string('type', fn (v) { val.type = v })
-      o.key('documentation', fn (p) {
-        Markdown.parse(p).map(fn (v) { val.documentation = v })
-      })
-      o.values('required_methods', fn (p) {
-        Method.parse(p).map(fn (v) { val.required_methods.push(v) })
-      })
-      o.values('default_methods', fn (p) {
-        Method.parse(p).map(fn (v) { val.default_methods.push(v) })
-      })
-      o.values('implementations', fn (p) {
-        Implementation.parse(p).map(fn (v) { val.implementations.push(v) })
-      })
+    try parser.object(fn (key) {
+      match key {
+        case 'name' -> val.name = try parser.string
+        case 'location' -> Location.parse(parser, val.location)
+        case 'public' -> val.public = try parser.bool
+        case 'type' -> val.type = try parser.string
+        case 'documentation' -> val.documentation = try parser.markdown
+        case 'required_methods' -> {
+          try parser.array(fn {
+            val.required_methods.push(try Method.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case 'default_methods' -> {
+          try parser.array(fn {
+            val.default_methods.push(try Method.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case 'implementations' -> {
+          try parser.array(fn {
+            val.implementations.push(try Implementation.parse(parser))
+            Result.Ok(nil)
+          })
+        }
+        case key -> throw Error.InvalidKey(key)
+      }
+
+      Result.Ok(nil)
     })
 
     val.required_methods.sort
@@ -901,7 +1097,7 @@ impl Symbol for Trait {
 type async Parser {
   fn async parse(
     input: uni Path,
-    output: uni Channel[uni Result[Module, (Path, Error[IoError])]],
+    output: uni Channel[uni Result[Module, (Path, Error)]],
   ) {
     let res = recover {
       let input = recover input

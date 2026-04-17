@@ -1,7 +1,7 @@
 import builder.html
 import idoc.html (
   atomic, container, head, header, highlight_inko, implementations, link_to,
-  methods, page_title, private, search_results, sidebar, symbol_info,
+  methods, mutable, page_title, private, search_results, sidebar, symbol_info,
   value_type, with_table_of_contents,
 )
 import idoc.ir
@@ -77,6 +77,8 @@ type Page {
                   h.h3.attr('id', 'field.${sym.name}').text(sym.name)
 
                   if !sym.public { private(h) }
+
+                  if sym.mutable { mutable(h) }
                 })
                 symbol_info(content, fn (c) {
                   c.append(highlight_inko(sym.type.to_byte_array))

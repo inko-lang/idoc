@@ -22,7 +22,6 @@
         "lines": { "start": 1, "end": 2 },
         "columns": { "start": 1, "end": 2 }
       },
-      "kind": 0,
       "public": true,
       "type": "fn a",
       "documentation": "Example"
@@ -35,7 +34,6 @@
         "lines": { "start": 1, "end": 2 },
         "columns": { "start": 1, "end": 2 }
       },
-      "kind": 0,
       "public": true,
       "type": "class A",
       "documentation": "Example",

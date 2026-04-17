@@ -2,8 +2,7 @@ import idoc.ir
 import idoc.markdown (Markdown)
 import markdown
 import std.cmp (Ordering)
-import std.io (Buffer, Error as IoError)
-import std.json (PullParser)
+import std.io (Buffer)
 import std.sync (Channel)
 import std.test (Tests)
 
@@ -11,8 +10,8 @@ fn two_paragraphs -> Markdown {
   Markdown(markdown.Document.parse('first\n\nsecond').get)
 }
 
-fn pull(input: String) -> PullParser[Buffer[String], IoError] {
-  PullParser.new(Buffer.new(input))
+fn pull(input: String) -> ir.JsonParser[Buffer[String]] {
+  ir.JsonParser.new(Buffer.new(input))
 }
 
 fn empty_type(kind: ir.TypeKind) -> ir.Type {
@@ -373,6 +372,7 @@ fn pub tests(t: mut Tests) {
           "columns": { "start": 1, "end": 2 }
         },
         "public": true,
+        "mutable": true,
         "type": "Int",
         "documentation": "Example"
       }
@@ -384,7 +384,8 @@ fn pub tests(t: mut Tests) {
     t.equal(field.name, 'foo')
     t.equal(field.location.lines, ir.Range.new(1, 2))
     t.equal(field.location.columns, ir.Range.new(1, 2))
-    t.equal(field.public, true)
+    t.true(field.public)
+    t.true(field.mutable)
     t.equal(field.type, 'Int')
     t.equal(
       field.documentation.to_html(increment_headings: 0).to_string,
@@ -399,6 +400,7 @@ fn pub tests(t: mut Tests) {
       name: 'A',
       location: ir.Location.default,
       public: true,
+      mutable: false,
       type: 'Int',
       documentation: Markdown.new,
     )
@@ -871,6 +873,7 @@ fn pub tests(t: mut Tests) {
           name: 'A',
           location: ir.Location.default,
           public: true,
+          mutable: false,
           type: 'Int',
           documentation: Markdown.new,
         ),
