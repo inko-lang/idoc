@@ -8,6 +8,8 @@ import idoc.page.modules (self as mods)
 import idoc.page.search
 import idoc.page.trait (self as trt)
 import idoc.page.type (self as typ)
+import std.crypto.sha2 (Sha256)
+import std.fs.file (ReadOnlyFile)
 import std.fs.path (Path)
 import std.io (Error as IoError, Write)
 import std.optparse (Options)
@@ -27,6 +29,36 @@ let OUTPUT_DIR = 'build/idoc'
 # This constant is public such that its path can be overwritten at compile-time
 # (e.g. by setting it to `/usr/share/idoc/assets`).
 let pub ASSETS = 'assets'
+
+fn hash_json(directory: ref Path) -> Result[String, String] {
+  let hasher = Sha256.new
+  let iter = try directory.list.map_error(fn (e) {
+    "failed to list the contents of '${directory}': ${e}"
+  })
+  let buf = ByteArray.with_capacity(32 * 1024)
+
+  for entry in iter {
+    let entry = try entry.map_error(fn (e) {
+      "failed to list a file in '${directory}': ${e}"
+    })
+    let file = try ReadOnlyFile.new(entry.path).map_error(fn (e) {
+      "failed to open '${entry.path}': ${e}"
+    })
+
+    loop {
+      match file.read(into: buf, size: buf.capacity) {
+        case Ok(0) -> break
+        case Ok(_) -> {}
+        case Error(e) -> throw "failed to read '${entry.path}': ${e}"
+      }
+
+      hasher.write(buf)
+      buf.clear
+    }
+  }
+
+  Result.Ok(hasher.finish.to_string)
+}
 
 fn generate_json(
   executable: String,
@@ -127,6 +159,7 @@ Examples:
   let search_page = recover search.Page.new
   let mod_summaries = recover []
   let mods_iter = modules.into_iter
+  let search_hash = try hash_json(input)
 
   loop {
     let mut mod = match mods_iter.next {
@@ -151,7 +184,13 @@ Examples:
     for c in mod.unique_constants {
       let html = mod_name.symbol_html_uri(c.name)
       let page = recover {
-        constant.Page.new(mod_name.clone, file.clone, c, sidebar.clone)
+        constant.Page.new(
+          mod_name.clone,
+          file.clone,
+          c,
+          sidebar.clone,
+          search_hash,
+        )
       }
 
       site.generate(html, fn move (f) { page.to_html(f) })
@@ -159,34 +198,42 @@ Examples:
 
     for m in mod.unique_methods {
       let html = mod_name.symbol_html_uri(m.name)
-      let page = recover method.Page.new(mod_name.clone, m, sidebar.clone)
+      let page = recover {
+        method.Page.new(mod_name.clone, m, sidebar.clone, search_hash)
+      }
 
       site.generate(html, fn move (f) { page.to_html(f) })
     }
 
     for c in mod.unique_types {
       let html = mod_name.symbol_html_uri(c.name)
-      let page = recover typ.Page.new(mod_name.clone, c, sidebar.clone)
+      let page = recover {
+        typ.Page.new(mod_name.clone, c, sidebar.clone, search_hash)
+      }
 
       site.generate(html, fn move (f) { page.to_html(f) })
     }
 
     for c in mod.unique_traits {
       let html = mod_name.symbol_html_uri(c.name)
-      let page = recover trt.Page.new(mod_name.clone, c, sidebar.clone)
+      let page = recover {
+        trt.Page.new(mod_name.clone, c, sidebar.clone, search_hash)
+      }
 
       site.generate(html, fn move (f) { page.to_html(f) })
     }
 
-    let page = recover module.Page.new(mod_name.source_uri, sidebar.clone, mod)
+    let page = recover {
+      module.Page.new(mod_name.source_uri, sidebar.clone, mod, search_hash)
+    }
 
     site.generate(mod_name.html_uri, fn move (f) { Result.Ok(page.to_html(f)) })
   }
 
-  let index = recover mods.Page.new(input.clone, mod_summaries)
+  let index = recover mods.Page.new(input.clone, mod_summaries, search_hash)
 
   site.generate('index.html', fn move (f) { index.to_html(f) })
-  site.generate('search.json', fn move (f) { Result.Ok(search_page.to_json(f)) })
+  site.generate('search.json', fn move (_) { Result.Ok(search_page.to_json) })
   site.copy('*.css')
   site.copy('*.js')
   site.copy('*.ico')

@@ -14,15 +14,23 @@ type Page {
   let @source: String
   let @method: Method
   let @modules: Array[ModuleName]
+  let @search_hash: String
 
   fn static new(
     module: ModuleName,
     method: Method,
     modules: Array[ModuleName],
+    search_hash: String,
   ) -> Page {
     let src = module.symbol_source_uri(method.name)
 
-    Page(module: module, source: src, method: method, modules: modules)
+    Page(
+      module: module,
+      source: src,
+      method: method,
+      modules: modules,
+      search_hash: search_hash,
+    )
   }
 
   fn source_code -> Result[ByteArray, String] {
@@ -37,7 +45,13 @@ type Page {
     let source = try source_code
     let current_url = file_url(files.source, files.source.join(@source))
     let result = html.Document.html('en', fn (h) {
-      h.add(head(current_url, title: '${@module.name}.${@method.name}'))
+      h.add(
+        head(
+          current_url,
+          title: '${@module.name}.${@method.name}',
+          search_hash: @search_hash,
+        ),
+      )
 
       h.body.with(fn (body) {
         header(body, current_url)

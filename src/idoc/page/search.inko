@@ -5,7 +5,6 @@ import idoc.module_name (ModuleName)
 import std.cmp (Compare, Ordering)
 import std.int (ToInt)
 import std.json (Json)
-import wobsite (Files)
 
 type enum Kind {
   case Module
@@ -238,7 +237,7 @@ type Page {
     @symbols.append(symbols)
   }
 
-  fn mut to_json(files: ref Files) -> String {
+  fn mut to_json -> String {
     let vals = []
 
     @symbols.sort

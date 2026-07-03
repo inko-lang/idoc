@@ -4,7 +4,6 @@ import idoc.ir
 import idoc.module_name (ModuleName)
 import idoc.url (relative_url)
 import markdown.html (TableOfContents)
-import std.time (DateTime)
 import syntax.format (Html as HtmlFormatter)
 import syntax.lexer.inko (Lexer)
 
@@ -52,7 +51,7 @@ fn link(href: String, rel: String) -> Element {
   el
 }
 
-fn head(page: String, title: String) -> Element {
+fn head(page: String, title: String, search_hash: String) -> Element {
   let head = Element.new('head')
   let to_root = relative_url(page, '/')
 
@@ -70,7 +69,7 @@ fn head(page: String, title: String) -> Element {
   # the search cache.
   head.attr(
     'data-search',
-    relative_url(page, '/search.json') + '?t=${DateTime.utc.to_int}',
+    relative_url(page, '/search.json') + '?hash=${search_hash}',
   )
 
   head

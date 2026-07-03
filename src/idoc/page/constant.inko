@@ -16,12 +16,14 @@ type Page {
   let @source: String
   let @constant: Constant
   let @modules: Array[ModuleName]
+  let @search_hash: String
 
   fn static new(
     module: ModuleName,
     path: Path,
     constant: Constant,
     modules: Array[ModuleName],
+    search_hash: String,
   ) -> Page {
     let src = module.symbol_source_uri(constant.name)
 
@@ -31,6 +33,7 @@ type Page {
       source: src,
       constant: constant,
       modules: modules,
+      search_hash: search_hash,
     )
   }
 
@@ -46,7 +49,13 @@ type Page {
     let source = try source_code
     let current_url = file_url(files.source, files.source.join(@source))
     let result = html.Document.html('en', fn (h) {
-      h.add(head(current_url, title: '${@module.name}.${@constant.name}'))
+      h.add(
+        head(
+          current_url,
+          title: '${@module.name}.${@constant.name}',
+          search_hash: @search_hash,
+        ),
+      )
 
       h.body.with(fn (body) {
         header(body, current_url)

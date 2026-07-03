@@ -14,15 +14,23 @@ type Page {
   let @source: String
   let @type: ir.Type
   let @modules: Array[ModuleName]
+  let @search_hash: String
 
   fn static new(
     module: ModuleName,
     node: ir.Type,
     modules: Array[ModuleName],
+    search_hash: String,
   ) -> Page {
     let src = module.symbol_source_uri(node.name)
 
-    Page(module: module, source: src, type: node, modules: modules)
+    Page(
+      module: module,
+      source: src,
+      type: node,
+      modules: modules,
+      search_hash: search_hash,
+    )
   }
 
   fn signature_html -> html.Document {
@@ -40,7 +48,13 @@ type Page {
     )
     let current_url = file_url(files.source, files.source.join(@source))
     let result = html.Document.html('en', fn (h) {
-      h.add(head(current_url, title: '${@module.name}.${@type.name}'))
+      h.add(
+        head(
+          current_url,
+          title: '${@module.name}.${@type.name}',
+          search_hash: @search_hash,
+        ),
+      )
 
       h.body.with(fn (body) {
         header(body, current_url)

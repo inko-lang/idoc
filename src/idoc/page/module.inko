@@ -54,13 +54,20 @@ type Page {
   let @source: String
   let @modules: Array[ModuleName]
   let @module: ir.Module
+  let @search_hash: String
 
   fn static new(
     source: String,
     modules: Array[ModuleName],
     module: ir.Module,
+    search_hash: String,
   ) -> Page {
-    Page(source: source, modules: modules, module: module)
+    Page(
+      source: source,
+      modules: modules,
+      module: module,
+      search_hash: search_hash,
+    )
   }
 
   fn mut to_html(files: ref Files) -> String {
@@ -68,7 +75,9 @@ type Page {
     let current_url = file_url(files.source, files.source.join(@source))
 
     let result = html.Document.html('en', fn (html) {
-      html.add(head(current_url, title: @module.name))
+      html.add(
+        head(current_url, title: @module.name, search_hash: @search_hash),
+      )
 
       html.body.with(fn (body) {
         header(body, current_url)

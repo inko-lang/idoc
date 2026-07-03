@@ -29,10 +29,15 @@ type Module {
 type Page {
   let @directory: Path
   let @modules: Array[Module]
+  let @search_hash: String
 
-  fn static new(directory: Path, modules: Array[Module]) -> Page {
+  fn static new(
+    directory: Path,
+    modules: Array[Module],
+    search_hash: String,
+  ) -> Page {
     modules.sort_by(fn (a, b) { a.name.cmp(b.name) })
-    Page(directory: directory, modules: modules)
+    Page(directory: directory, modules: modules, search_hash: search_hash)
   }
 
   fn to_html(files: ref Files) -> Result[String, String] {
@@ -42,7 +47,7 @@ type Page {
     let current_url = file_url(files.source, files.source.join('index.md'))
     let links = @modules.iter.map(fn (m) { m.name.clone }).to_array
     let result = html.Document.html('en', fn (html) {
-      html.add(head(current_url, title: TITLE))
+      html.add(head(current_url, title: TITLE, search_hash: @search_hash))
 
       html.body.with(fn (body) {
         header(body, current_url)
