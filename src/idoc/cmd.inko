@@ -9,7 +9,6 @@ import idoc.page.search
 import idoc.page.trait (self as trt)
 import idoc.page.type (self as typ)
 import std.crypto.sha2 (Sha256)
-import std.fs.file (ReadOnlyFile)
 import std.fs.path (Path)
 import std.io (Error as IoError, Write)
 import std.optparse (Options)
@@ -30,34 +29,24 @@ let OUTPUT_DIR = 'build/idoc'
 # (e.g. by setting it to `/usr/share/idoc/assets`).
 let pub ASSETS = 'assets'
 
-fn hash_json(directory: ref Path) -> Result[String, String] {
-  let hasher = Sha256.new
-  let iter = try directory.list.map_error(fn (e) {
-    "failed to list the contents of '${directory}': ${e}"
-  })
-  let buf = ByteArray.with_capacity(32 * 1024)
+fn populate_search_index(
+  modules: Array[uni ir.Module],
+) -> (Array[uni ir.Module], uni search.Page) {
+  let new_modules = Array.with_capacity(modules.size)
+  let page = recover search.Page.new
 
-  for entry in iter {
-    let entry = try entry.map_error(fn (e) {
-      "failed to list a file in '${directory}': ${e}"
-    })
-    let file = try ReadOnlyFile.new(entry.path).map_error(fn (e) {
-      "failed to open '${entry.path}': ${e}"
-    })
+  for mod in modules {
+    let mod = recover {
+      let mod = recover mod
 
-    loop {
-      match file.read(into: buf, size: buf.capacity) {
-        case Ok(0) -> break
-        case Ok(_) -> {}
-        case Error(e) -> throw "failed to read '${entry.path}': ${e}"
-      }
-
-      hasher.write(buf)
-      buf.clear
+      page.add_symbols(search.Symbol.array_for(mod))
+      mod
     }
+
+    new_modules.push(mod)
   }
 
-  Result.Ok(hasher.finish.to_string)
+  (new_modules, page)
 }
 
 fn generate_json(
@@ -156,24 +145,12 @@ Examples:
   })
 
   let (modules, sidebar) = try ir.Module.parse_all(input)
-  let search_page = recover search.Page.new
+  let (modules, search_page) = populate_search_index(modules)
   let mod_summaries = recover []
-  let mods_iter = modules.into_iter
-  let search_hash = try hash_json(input)
+  let search_json = search_page.to_json
+  let search_hash = Sha256.hash(search_json).to_string
 
-  loop {
-    let mut mod = match mods_iter.next {
-      case Some(v) -> v
-      case _ -> break
-    }
-
-    mod = recover {
-      let mod = recover mod
-
-      search_page.add_symbols(search.Symbol.array_for(mod))
-      mod
-    }
-
+  for mod in modules {
     let mod_name = ModuleName.new(mod.name)
     let file = mod.file.clone
 
@@ -233,7 +210,7 @@ Examples:
   let index = recover mods.Page.new(input.clone, mod_summaries, search_hash)
 
   site.generate('index.html', fn move (f) { index.to_html(f) })
-  site.generate('search.json', fn move (_) { Result.Ok(search_page.to_json) })
+  site.generate('search.json', fn move (_) { Result.Ok(search_json) })
   site.copy('*.css')
   site.copy('*.js')
   site.copy('*.ico')
