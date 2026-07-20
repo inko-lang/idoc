@@ -81,9 +81,8 @@ type inline JsonParser[T: mut + Read[IoError]] {
     Self(PullParser.new(input))
   }
 
-  fn mut object(
-    value: fn (String) -> Result[Nil, Error],
-  ) -> Result[Nil, Error] {
+  fn mut object(value: fn (String) -> Result[Nil, Error]) -> Result[Nil, Error]
+  {
     try Error.json(@inner.object)
 
     loop {
