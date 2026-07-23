@@ -58,7 +58,10 @@ fn head(page: String, title: String, search_hash: String) -> Element {
   # We remove the trailing / here so that in the JS code we can just do the
   # equivalent of `data-to-root + link`, without ending up with duplicate
   # slashes (e.g. foo.com//module/...) in the URLs.
-  head.attr('data-to-root', to_root.strip_suffix('/').or(to_root))
+  head.attr(
+    'data-to-root',
+    to_root.strip_suffix('/').or(to_root.to_slice).to_string,
+  )
 
   # The search data can get pretty big so we want to cache it. Since the file is
   # generated dynamically, we can't use inko-wobsite's asset hashing feature,
