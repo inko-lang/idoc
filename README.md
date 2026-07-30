@@ -55,12 +55,9 @@ podman run --rm --volume $PWD:$PWD:z --workdir $PWD idoc:latest
 
 There are two sets of tags available:
 
-- `idoc:latest`: a build of idoc that bundles the latest stable release of Inko
-- `idoc-main:latest`: a build of idoc that bundles the latest build from Inko's
+- `idoc:X`: a build of idoc that bundles the latest stable release of Inko
+- `idoc-main:X`: a build of idoc that bundles the latest build from Inko's
   `main` branch
-
-Due to the fast moving nature of Inko we currently don't provide any versioned
-Docker tags (e.g. `idoc:1.2.3`).
 
 ## License
 
